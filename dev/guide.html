@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platen: Guide bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cutive+Mono&family=Special+Elite&display=swap">
+<link rel="stylesheet" href="../css/guide.css">
+<style>
+  :root {
+    --ui-paper: #f3ead6; --ui-paper-2: #e9dec4; --ui-ink: #2a221c; --ui-ink-2: #5a4c3f;
+    --ui-line: rgba(70, 52, 34, .22); --ui-brass: #b08d57; --ui-brass-2: #8c6b3c;
+    --ui-green: #2f4a3a; --ui-oxblood: #6a2328; --ui-shadow: 0 14px 40px rgba(18, 10, 4, .38);
+    --ui-serif: 'Cormorant Garamond', Georgia, serif; --ui-type: 'Courier Prime', 'Courier New', monospace; --ui-radius: 10px;
+  }
+  html, body { margin: 0; height: 100%; }
+  body { background: radial-gradient(ellipse at 50% 30%, #4a3424 0%, #2b1d14 60%, #1a110b 100%); font-family: var(--ui-type); overflow: hidden; }
+  .desk { position: fixed; inset: 0; display: grid; place-items: center; }
+  .desk button { font: 700 15px var(--ui-type); padding: 12px 22px; border-radius: 999px; background: #2f4a3a; color: #f3ead6; border: 1px solid #b08d57; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="desk"><button id="again">Open the guide</button></div>
+<div id="host"></div>
+<script type="module">
+// dev/guide.html?art=teacup|sailboat|shapes|text  [&style=shade|line|stipple] [&done=N] [&reset=1]
+import * as art from '../js/art.js';
+import { openGuide, makeGuide } from '../js/guide.js';
+
+window.__pending = true;
+const q = new URLSearchParams(location.search);
+let ink = null;
+try { ink = await import('../js/ink.js'); if (ink.loadFonts) await ink.loadFonts(); } catch (e) { console.warn('ink.js unavailable', e.message); }
+
+function build(name) {
+  if (name === 'shapes') {
+    return { title: 'Boxes and a banner', strikes: art.shapesToStrikes([
+      { type: 'rect', x: 10, y: 8, w: 18, h: 7, glyph: 'auto' },
+      { type: 'fill', of: { type: 'rect', x: 10, y: 8, w: 18, h: 7 }, glyph: '#@' },
+      { type: 'ellipse', x: 34, y: 7, w: 22, h: 10, glyph: 'auto' },
+      { type: 'fill', of: { type: 'ellipse', x: 34, y: 7, w: 22, h: 10 }, glyph: '.', ink: 'r' },
+      { type: 'line', x1: 10.5, y1: 19.5, x2: 60.5, y2: 19.5, glyph: 'auto', halfStep: true },
+      { type: 'banner', text: 'HELLO', x: 12, y: 23, size: 2, glyph: 'self' },
+    ]) };
+  }
+  if (name === 'text') {
+    const lines = ['October 9', '', 'Dear Margaret,', '', 'The new ribbon arrived this morning and the', 'machine sounds better than ever. I typed you', 'a little teacup at the bottom of this page.', '', 'Yours,', '   Thomas'];
+    const strikes = [];
+    lines.forEach((l, r) => [...l].forEach((c, i) => { if (c !== ' ') strikes.push({ c, x: 10 + i, y: 6 + r, k: 'k', p: 1, f: 'pica' }); }));
+    strikes.push({ c: '_', x: 23, y: 8, k: 'r', p: 1, f: 'pica' }, { c: '_', x: 24, y: 8, k: 'r', p: 1, f: 'pica' });   // underline in red
+    strikes.push({ c: '-', x: 10, y: 15, k: 'k', p: 1, f: 'pica' });                                                       // an overstrike
+    return { title: 'A letter to Margaret', strikes };
+  }
+  const s = art.SAMPLES.find(x => x.id === name) || art.SAMPLES[0];
+  const cols = +(q.get('cols') || 50);
+  const style = q.get('style') || 'shade';
+  const img = art.pictureImageData(s, cols * 8, s.aspect);
+  const strikes = art.orderStrikes(art.imageToStrikes(img, { cols, style, halfRows: style === 'shade' && q.get('half') !== '0', x0: Math.round((85 - cols) / 2), y0: 6 }));
+  return { title: s.name, strikes };
+}
+
+const name = q.get('art') || 'teacup';
+const { title, strikes } = build(name);
+if (q.get('reset') !== '0') try { localStorage.removeItem('platen-guide:' + makeGuide(strikes).id); } catch { /* */ }
+window.__leaked = [];
+window.addEventListener('keydown', e => window.__leaked.push(e.key));
+const host = document.getElementById('host');
+const guide = openGuide(host, { PageSurface: ink && ink.PageSurface, strikes, title, paper: 'ivory' });
+window.guide = guide;
+document.getElementById('again').onclick = () => openGuide(host, { PageSurface: ink && ink.PageSurface, strikes, title });
+for (let i = 0; i < +(q.get('done') || 0); i++) guide.next();
+await new Promise(r => setTimeout(r, 400));
+window.__done = { ok: true, art: name, lines: guide.guide.lines.length, strikes: guide.guide.summary.strikes, done: guide.done.size, standIn: !ink };
+</script>
+</body>
+</html>

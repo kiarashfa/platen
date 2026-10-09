@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platen: Planner bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cutive+Mono&family=Special+Elite&display=swap">
+<link rel="stylesheet" href="../css/planner.css">
+<style>
+  :root {
+    --ui-paper: #f3ead6; --ui-paper-2: #e9dec4; --ui-ink: #2a221c; --ui-ink-2: #5a4c3f;
+    --ui-line: rgba(70, 52, 34, .22); --ui-brass: #b08d57; --ui-brass-2: #8c6b3c;
+    --ui-green: #2f4a3a; --ui-oxblood: #6a2328; --ui-shadow: 0 14px 40px rgba(18, 10, 4, .38);
+    --ui-serif: 'Cormorant Garamond', Georgia, serif;
+    --ui-type: 'Courier Prime', 'Courier New', monospace;
+    --ui-radius: 10px;
+  }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 50% 30%, #4a3424 0%, #2b1d14 60%, #1a110b 100%);
+    color: var(--ui-paper); font-family: var(--ui-type); overflow: hidden;
+  }
+  body.sheet { background: #efe7d6; color: var(--ui-ink); overflow: auto; }
+  .desk { position: fixed; inset: 0; display: grid; place-items: center; }
+  .desk button {
+    font: 600 15px var(--ui-type); letter-spacing: .06em; padding: 12px 22px; border-radius: 999px;
+    background: var(--ui-green); color: var(--ui-paper); border: 1px solid var(--ui-brass); cursor: pointer;
+  }
+  .sheetwrap { padding: 18px 22px 30px; }
+  .sheetwrap h1 { font: 600 28px var(--ui-serif); margin: 0 0 4px; }
+  .sheetwrap .sub { font: 13px var(--ui-type); color: var(--ui-ink-2); margin-bottom: 14px; }
+  .grid { display: grid; gap: 14px 16px; align-items: start; }
+  .tile { background: #fff8; border: 1px solid var(--ui-line); border-radius: 6px; padding: 8px; }
+  .tile canvas { display: block; width: 100%; height: auto; }
+  .tile .cap { font: 11px var(--ui-type); color: var(--ui-ink-2); margin-top: 5px; display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .tile .cap b { color: var(--ui-ink); font-weight: 700; }
+  .src { display: flex; gap: 10px; align-items: center; font: 600 17px var(--ui-serif); }
+  .src canvas { width: 54px; height: auto; border: 1px solid var(--ui-line); background: #fff; }
+</style>
+</head>
+<body>
+<script type="module">
+import * as art from '../js/art.js';
+
+window.__pending = true;
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? +q.get(k) : d);
+
+async function loadInk() {
+  try {
+    const ink = await import('../js/ink.js');
+    if (ink.loadFonts) await ink.loadFonts();
+    return ink;
+  } catch (e) {
+    console.warn('ink.js unavailable, using the stand-in renderer:', e.message);
+    return { PageSurface: StandInSurface, GRID: art.PAGE, INKS: { k: { color: '#222' }, r: { color: '#b33' } }, standIn: true };
+  }
+}
+
+// Minimal stand-in with the PageSurface API (only used if js/ink.js fails to load).
+class StandInSurface {
+  constructor({ paper = 'ivory', scale = 1 } = {}) {
+    this.scale = scale; this.width = Math.round(2040 * scale); this.height = Math.round(2640 * scale);
+    this.canvas = document.createElement('canvas'); this.canvas.width = this.width; this.canvas.height = this.height;
+    this.ctx = this.canvas.getContext('2d'); this.version = 0; this._s = []; this.paper = paper; this.setPaper(paper);
+  }
+  setPaper(id) { this.paper = id; this.render(this._s); }
+  render(strikes) { this._s = strikes.slice(); const c = this.ctx; c.fillStyle = '#f6efdf'; c.fillRect(0, 0, this.width, this.height); for (const s of strikes) this._draw(s); this.version++; }
+  add(s) { this._s.push(s); this._draw(s); this.version++; return { x: 0, y: 0, w: 0, h: 0 }; }
+  redraw() { this.render(this._s); }
+  takeDirty() { return null; }
+  _draw(s) {
+    const c = this.ctx, k = this.scale;
+    c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = s.k === 'r' ? 'rgba(170,40,40,.9)' : 'rgba(30,28,26,.88)';
+    c.font = `${40 * k}px "${art.FAMILIES[s.f] || 'Courier Prime'}"`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    c.fillText(s.c, (s.x + 0.5) * 24 * k, (s.y + 0.74) * 40 * k); c.restore();
+  }
+}
+
+const seedOf = (s, i) => (Math.imul(i + 1, 2654435761) ^ (s.c.charCodeAt(0) * 40503) ^ Math.round(s.x * 2) * 7919 ^ Math.round(s.y * 2) * 104729) >>> 0;
+const withSeeds = strikes => strikes.map((s, i) => ({ ...s, s: seedOf(s, i), w: 0.15 }));
+
+async function sheet() {
+  document.body.className = 'sheet';
+  const ink = await loadInk();
+  const tf = q.get('tf') || 'pica';
+  if (q.get('ramp') !== 'table') await art.densityRamp(tf, ink.standIn ? {} : { PageSurface: ink.PageSurface });
+  const cols = num('cols', 60);
+  // like the Planner: shade on half lines unless ?half=0, line and stipple on whole lines
+  const halfFor = style => (q.has('half') ? q.get('half') === '1' : style === 'shade');
+  const half = halfFor('shade');
+  const styles = (q.get('style') || 'shade,line,stipple').split(',');
+  const samples = art.SAMPLES.filter(s => !q.get('only') || q.get('only').split(',').includes(s.id));
+  const wrap = document.createElement('div');
+  wrap.className = 'sheetwrap';
+  wrap.innerHTML = `<h1>Typewriter art: built-in pictures</h1><div class="sub">${cols} columns · shade on ${half ? 'half lines' : 'whole lines'} · typeface ${tf} · ${ink.standIn ? 'stand-in renderer' : 'real PageSurface'} · ramp: ${art.rampSync(tf).map(r => r.glyphs.join('') || '␠').join(' ')}</div>`;
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.style.gridTemplateColumns = `repeat(${samples.length}, 1fr)`;
+  wrap.appendChild(grid);
+  document.body.appendChild(wrap);
+  // fit the whole grid in the viewport (header ~130 px, captions ~46 px per row)
+  const nRows = styles.length + (q.get('src') === '1' ? 1 : 0);
+  const minAspect = Math.min(...samples.map(s => s.aspect));
+  const byW = (innerWidth - 44 - 16 * (samples.length - 1)) / samples.length - 18;
+  const byH = ((innerHeight - 190) / nRows - 50) * minAspect * 0.98;
+  const tileW = q.get('fit') === '0' ? byW : Math.max(140, Math.min(byW, byH));
+  grid.style.gridTemplateColumns = `repeat(${samples.length}, ${Math.round(tileW + 18)}px)`;
+  grid.style.justifyContent = 'center';
+  const scale = num('scale', Math.min(1, (tileW * devicePixelRatio) / (cols * 24)));
+  const surface = new ink.PageSurface({ paper: q.get('paper') || 'ivory', scale });
+  for (const s of samples) {
+    const head = document.createElement('div');
+    head.className = 'src';
+    const thumb = document.createElement('canvas');
+    thumb.width = 160; thumb.height = Math.round(160 / s.aspect);
+    s.draw(thumb.getContext('2d'), thumb.width, thumb.height);
+    head.append(thumb, document.createTextNode(s.name));
+    grid.appendChild(head);
+  }
+  const results = [];
+  if (q.get('src') === '1') {
+    for (const s of samples) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      const rows = art.pictureRows(cols * 8, Math.round(cols * 8 / s.aspect), cols);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(cols * 24 * scale); cv.height = Math.round((rows + 1.5) * 40 * scale);
+      const c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+      c.save(); c.translate(0, Math.round(0.5 * 40 * scale));
+      s.draw(c, cv.width, Math.round(rows * 40 * scale));
+      c.restore();
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.innerHTML = `<span><b>source</b> ${s.name}</span><span>${cols} x ${rows}</span>`;
+      tile.append(cv, cap);
+      grid.appendChild(tile);
+    }
+  }
+  for (const style of styles) {
+    for (const s of samples) {
+      const img = art.pictureImageData(s, cols * 8, s.aspect);
+      const t0 = performance.now();
+      const strikes = art.imageToStrikes(img, { cols, style, halfRows: halfFor(style), typeface: tf, x0: 0, y0: 1,
+        contrast: num('contrast', 0), brightness: num('brightness', 0), gamma: num('gamma', 1), dither: q.get('dither') || 'diffuse',
+        hatch: num('hatch', undefined), detail: num('detail', undefined), sharpen: num('sharpen', undefined), curve: num('curve', undefined),
+        ramp: q.has('levels') && art.rampSync(tf).measure ? (window.__ramp ||= art.buildRamp(art.rampSync(tf).measure, { levels: num('levels', 15) })) : undefined });
+      const ms = performance.now() - t0;
+      const rows = art.pictureRows(img.width, img.height, cols);
+      surface.render(withSeeds(strikes));
+      const sw = Math.round(cols * 24 * scale), sh = Math.round((rows + 1.5) * 40 * scale);
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      const cv = document.createElement('canvas');
+      cv.width = sw; cv.height = sh;
+      cv.getContext('2d').drawImage(surface.canvas, 0, Math.round(0.5 * 40 * scale), sw, sh, 0, 0, sw, sh);
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.innerHTML = `<span><b>${style}</b></span><span>${strikes.length} strikes · ${art.formatDuration(art.estimateSeconds(strikes)).replace('about ', '~')}</span>`;
+      tile.append(cv, cap);
+      grid.appendChild(tile);
+      results.push({ sample: s.id, style, strikes: strikes.length, ms: Math.round(ms) });
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  window.__done = { ok: true, mode: 'sheet', scale, standIn: !!ink.standIn, results };
+}
+
+// Measure every candidate stack with the real renderer (art.surfaceMeasurer) and report the ramps.
+async function measure() {
+  const ink = await loadInk();
+  const out = {};
+  const tfs = (q.get('tf') || 'pica,elite,cutive').split(',');
+  for (const tf of tfs) {
+    const t0 = performance.now();
+    const m = await art.surfaceMeasurer(ink.PageSurface, tf, { scale: num('scale', 0.5) });
+    const ramp = art.buildRamp(m);
+    const canvasRamp = art.buildRamp(art.canvasMeasurer(art.FAMILIES[tf]));
+    const singles = {};
+    for (const c of ['.', ':', ',', ';', "'", '-', '_', '|', '/', '\\', '(', ')', '+', '*', 'o', 'x', '#', '@']) singles[c] = +m([c]).toFixed(5);
+    out[tf] = {
+      ramp: ramp.map(r => [r.glyphs, r.density]), top: ramp[ramp.length - 1].cov, singles,
+      canvasRamp: canvasRamp.map(r => [r.glyphs.join(''), r.density]), ms: Math.round(performance.now() - t0),
+    };
+  }
+  window.__done = { ok: true, mode: 'measure', standIn: !!ink.standIn, out };
+}
+
+// ---------------------------------------------------------------- the Planner on a fake host page
+function textStrikes(lines, x0, y0, tf = 'pica') {
+  const out = [];
+  lines.forEach((line, r) => [...line].forEach((c, i) => { if (c !== ' ') out.push({ c, x: x0 + i, y: y0 + r, k: 'k', p: 1, f: tf, s: (r * 977 + i * 131 + 17) >>> 0, w: 0.2 }); }));
+  return out;
+}
+
+const STATES = {
+  empty: () => ({ tool: 'pencil', shapes: [] }),
+  shapes: () => ({
+    tool: 'pencil',
+    shapes: [
+      { type: 'rect', x: 8, y: 14, w: 22, h: 9, glyph: 'auto' },
+      { type: 'fill', of: { type: 'rect', x: 8, y: 14, w: 22, h: 9 }, glyph: 'auto', shade: 0.35 },
+      { type: 'ellipse', x: 40, y: 13, w: 26, h: 12, glyph: 'auto' },
+      { type: 'fill', of: { type: 'ellipse', x: 40, y: 13, w: 26, h: 12 }, glyph: '.', ink: 'r' },
+      { type: 'line', x1: 8.5, y1: 27.5, x2: 76.5, y2: 27.5, glyph: 'auto' },
+      { type: 'pencil', points: Array.from({ length: 120 }, (_, i) => [8 + i * 0.58, 33 + Math.sin(i / 9) * 3.2]), glyph: 'auto' },
+      { type: 'pencil', points: Array.from({ length: 60 }, (_, i) => { const a = i / 59 * Math.PI * 2; return [72 + Math.cos(a) * 7, 34 + Math.sin(a) * 4]; }), glyph: '*' },
+      { type: 'banner', text: 'PLATEN', x: 8, y: 42, size: 2, glyph: '#' },
+      { type: 'banner', text: 'typewriter art', x: 1, y: 55, size: 1, glyph: 'self', ink: 'r' },
+    ],
+  }),
+  picture: () => ({ tool: 'picture', shapes: [{ type: 'picture', sample: 'teacup', x: 14, y: 12, cols: 58, style: 'shade', halfRows: true }] }),
+  line: () => ({ tool: 'picture', shapes: [{ type: 'picture', sample: 'lighthouse', x: 20, y: 9, cols: 46, style: 'line' }] }),
+  stipple: () => ({ tool: 'picture', shapes: [{ type: 'picture', sample: 'moon', x: 10, y: 12, cols: 64, style: 'stipple' }] }),
+  rose: () => ({ tool: 'picture', shapes: [{ type: 'picture', sample: 'rose', x: 22, y: 10, cols: 42, style: 'shade', halfRows: true }] }),
+  banner: () => ({ tool: 'banner', shapes: [{ type: 'banner', text: 'HAPPY', x: 14, y: 14, size: 2, glyph: 'self' }, { type: 'banner', text: 'BIRTHDAY', x: 4, y: 24, size: 1, glyph: '#', ink: 'r' }] }),
+  eraser: () => ({ ...STATES.shapes(), tool: 'eraser', hover: 2 }),
+  sailboat: () => ({ tool: 'picture', view: 'ink', shapes: [{ type: 'picture', sample: 'sailboat', x: 12, y: 12, cols: 60, style: 'shade', halfRows: true }] }),
+};
+
+async function bench() {
+  const ink = await loadInk();
+  const { Planner } = await import('../js/planner.js');
+  const tf = q.get('tf') || 'pica';
+  const page = { id: 'dev', paper: q.get('paper') || 'ivory', ghosts: [], created: Date.now(),
+    strikes: q.get('typed') === '0' ? [] : textStrikes(['Draw mode', '', 'A sketch for the machine to type.'], 8, 5, tf) };
+  window.page = page;
+  const desk = document.createElement('div');
+  desk.className = 'desk';
+  const btn = document.createElement('button');
+  btn.textContent = 'Open the Planner';
+  desk.appendChild(btn);
+  document.body.appendChild(desk);
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const planner = new Planner(host, {
+    PageSurface: ink.PageSurface,
+    getPage: () => page,
+    typeface: () => tf,
+    ink: () => 'k',
+    inks: () => (q.get('ribbon') === 'black' ? ['k'] : ['k', 'r']),
+    onCommit: strikes => {
+      window.__committed = strikes;
+      page.strikes.push(...strikes.map((s, i) => ({ ...s, s: (i * 2654435761) >>> 0, w: 0.15 })));
+      console.log('committed', strikes.length);
+    },
+  });
+  window.planner = planner;
+  btn.onclick = () => planner.open();
+  // keys that leak out of the planner would land here
+  window.__leaked = [];
+  window.addEventListener('keydown', e => window.__leaked.push(e.key));
+  const name = q.get('shot') || 'picture';
+  const st = (STATES[name] || STATES.empty)();
+  planner.load(st.shapes);
+  planner.open();
+  planner.setTool(st.tool);
+  if (st.view || q.get('view')) planner.setView(q.get('view') || st.view);
+  if (q.get('tool')) planner.setTool(q.get('tool'));
+  if (q.get('zoom')) planner._setZoom(+q.get('zoom'));
+  await art.densityRamp(tf, ink.standIn ? {} : { PageSurface: ink.PageSurface });
+  await new Promise(r => setTimeout(r, 700));
+  if (st.hover != null && planner.shapes[st.hover]) { planner.hover = planner.shapes[st.hover].id; planner._drawGuides(); }
+  if (q.get('drawing') === '1') planner.el.page.classList.add('is-drawing');
+  for (let i = 0; i < 4; i++) await new Promise(r => requestAnimationFrame(r));
+  window.__done = { ok: true, mode: 'planner', state: name, standIn: !!ink.standIn, strikes: planner.plannedStrikes.length,
+    ramp: art.rampSync(tf).source, count: planner.el.count.textContent };
+}
+
+const run = q.get('sheet') ? sheet : q.has('measure') ? measure : bench;
+run().catch(e => { console.error(e); window.__done = { ok: false, error: String(e && e.stack || e) }; });
+</script>
+</body>
+</html>

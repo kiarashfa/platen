@@ -1,0 +1,19 @@
+{
+  "name": "platen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A cozy typewriter for the web: a 3D manual typewriter with paper, ink and sound made in code.",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:winchxyz/platen",
+  "homepage": "https://winchxyz.github.io/platen/",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test": "node --test tests/*.test.mjs",
+    "film": "node tools/film.mjs",
+    "shots": "node tools/readme-shots.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}

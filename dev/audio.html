@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platen — Sound bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cutive+Mono&family=Special+Elite&display=swap" rel="stylesheet">
+<script>window.__pending = true;</script>
+<style>
+  :root {
+    --ui-paper: #f3ead6; --ui-paper-2: #e9dec4; --ui-ink: #2a221c; --ui-ink-2: #5a4c3f;
+    --ui-line: rgba(70, 52, 34, .22); --ui-brass: #b08d57; --ui-brass-2: #8c6b3c;
+    --ui-green: #2f4a3a; --ui-oxblood: #6a2328; --ui-shadow: 0 14px 40px rgba(18, 10, 4, .38);
+    --ui-serif: 'Cormorant Garamond', Georgia, serif;
+    --ui-type: 'Courier Prime', 'Courier New', monospace;
+    --ui-radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; color: var(--ui-ink); font-family: var(--ui-type); font-size: 14px;
+    background: radial-gradient(ellipse at 50% 0%, #4a3a2a 0%, #2b2018 55%, #1d1611 100%);
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { color: var(--ui-paper); display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+  header h1 { font-family: var(--ui-serif); font-weight: 600; font-size: 38px; margin: 0; letter-spacing: .5px; }
+  header .sub { color: var(--ui-brass); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .panel {
+    background: linear-gradient(180deg, var(--ui-paper) 0%, var(--ui-paper-2) 100%);
+    border: 1px solid var(--ui-brass); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow);
+    padding: 16px 18px 18px; position: relative;
+  }
+  .panel::after { content: ''; position: absolute; inset: 4px; border: 1px solid var(--ui-line); border-radius: 7px; pointer-events: none; }
+  .panel.wide { grid-column: 1 / -1; }
+  h2 { font-family: var(--ui-serif); font-weight: 600; font-size: 22px; margin: 0 0 4px; color: var(--ui-green); }
+  .hint { color: var(--ui-ink-2); font-size: 12px; margin: 0 0 12px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 7px; }
+  button {
+    font-family: var(--ui-type); font-size: 13px; color: var(--ui-ink); cursor: pointer;
+    background: #fbf5e8; border: 1px solid var(--ui-brass-2); border-radius: 6px; padding: 6px 10px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 2px 0 rgba(70,52,34,.25);
+  }
+  button:hover { background: #fff9ee; border-color: var(--ui-brass); }
+  button:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(70,52,34,.25); }
+  button.primary { background: var(--ui-green); color: var(--ui-paper); border-color: #1d3126; }
+  button.primary:hover { background: #3a5a47; }
+  button.on { background: var(--ui-oxblood); color: var(--ui-paper); border-color: #4a161a; }
+  textarea {
+    width: 100%; height: 150px; resize: vertical; padding: 12px 14px; border-radius: 6px;
+    border: 1px solid var(--ui-brass-2); background: #fffaf0; color: var(--ui-ink);
+    font-family: 'Special Elite', var(--ui-type); font-size: 17px; line-height: 1.5;
+  }
+  .row { display: grid; grid-template-columns: 120px 1fr 48px; align-items: center; gap: 10px; margin: 8px 0; }
+  .row label { color: var(--ui-ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
+  .row output { text-align: right; font-size: 12px; }
+  input[type=range] { width: 100%; accent-color: var(--ui-brass-2); }
+  select { font-family: var(--ui-type); font-size: 13px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--ui-brass-2); background: #fbf5e8; color: var(--ui-ink); }
+  .seg { display: inline-flex; border: 1px solid var(--ui-brass-2); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; box-shadow: none; }
+  .seg button + button { border-left: 1px solid var(--ui-brass-2); }
+  .status { font-size: 12px; color: var(--ui-ink-2); margin-top: 10px; white-space: pre-wrap; min-height: 1.4em; }
+  .meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ui-ink-2); margin-top: 8px; }
+  .meta b { color: var(--ui-ink); font-weight: 700; }
+  audio { width: 100%; margin-top: 10px; }
+  .col { font-size: 12px; color: var(--ui-ink-2); margin-top: 6px; }
+  .col b { color: var(--ui-oxblood); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Platen</h1><span class="sub">Sound bench &middot; procedural typewriter audio</span>
+  </header>
+  <div class="grid">
+    <section class="panel wide">
+      <h2>Typing pad</h2>
+      <p class="hint">Type here. Keys, space, backspace and return play through the engine; shifted capitals land heavier.
+        The bell rings 8 characters before a 65-column margin; at the margin keys jam until you press Return.</p>
+      <textarea id="pad" spellcheck="false" placeholder="Click here and start typing..."></textarea>
+      <div class="col" id="col">column <b>0</b> of 65</div>
+    </section>
+
+    <section class="panel">
+      <h2>Mechanical events</h2>
+      <p class="hint">Each button plays one event at the current settings.</p>
+      <div class="btns" id="events"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Mix</h2>
+      <p class="hint">Faders are 0..1 (gain = v&sup2;).</p>
+      <div class="row"><label for="master">Master</label><input id="master" type="range" min="0" max="1" step="0.01" value="0.9"><output>0.90</output></div>
+      <div class="row"><label for="machine">Machine</label><input id="machine" type="range" min="0" max="1" step="0.01" value="1"><output>1.00</output></div>
+      <div class="row"><label for="amblevel">Ambience</label><input id="amblevel" type="range" min="0" max="1" step="0.01" value="0.5"><output>0.50</output></div>
+      <div class="row"><label>Profile</label><span class="seg" id="profiles"></span><span></span></div>
+      <div class="row"><label for="amb">Room sound</label><select id="amb"><option value="">Silence</option></select><span></span></div>
+      <div class="row"><label>Margin bell</label><span><button id="bellBtn" class="on">On</button></span><span></span></div>
+      <div class="meta" id="meta"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Offline render</h2>
+      <p class="hint">Renders a scripted 12-second performance (paper in, a letter with a shifted capital, a bell, returns, paper out)
+        over rain, through the same graph, and posts it to <code>shots/audio-demo.wav</code>.</p>
+      <div class="btns">
+        <button class="primary" id="renderBtn">Render demo</button>
+        <button id="exportBtn">Export analysis set</button>
+      </div>
+      <div class="status" id="status"></div>
+      <audio id="player" controls hidden></audio>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+import { TypewriterAudio, AMBIENCES, PROFILES } from '../js/audio.js';
+import { rng, gauss } from '../js/util.js';
+
+const audio = new TypewriterAudio();
+window.audio = audio;
+const $ = id => document.getElementById(id);
+const status = s => { $('status').textContent = s; };
+const unlock = () => audio.unlock();
+addEventListener('pointerdown', unlock, { capture: true });
+addEventListener('keydown', unlock, { capture: true });
+
+// ---------- keyboard geometry -> pan
+const ROWS = ['`1234567890-=', 'qwertyuiop[]\\', "asdfghjkl;'", 'zxcvbnm,./'];
+const SHIFTED = '~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>?';
+const BASE = '`1234567890-=qwertyuiop[]\\asdfghjkl;\'zxcvbnm,./';
+function keyPan(ch) {
+  let c = ch;
+  const si = SHIFTED.indexOf(c);
+  if (si >= 0) c = BASE[si];
+  c = c.toLowerCase();
+  for (let r = 0; r < ROWS.length; r++) {
+    const i = ROWS[r].indexOf(c);
+    if (i >= 0) return Math.max(-1, Math.min(1, ((i + r * 0.35) / 12) * 1.3 - 0.65));
+  }
+  return 0;
+}
+
+// ---------- event buttons
+const EVENTS = [
+  ['Key', () => audio.key({ char: 'e', pan: keyPan('e') })],
+  ['Capital', () => { audio.shift(true, { pan: -0.7 }); audio.key({ char: 'M', intensity: 1.3, pan: keyPan('m'), at: 0.09 }); audio.shift(false, { pan: -0.7, at: 0.2 }); }],
+  ['Soft key', () => audio.key({ char: 'a', intensity: 0.55, pan: keyPan('a') })],
+  ['Period', () => audio.key({ char: '.', pan: keyPan('.') })],
+  ['Space', () => audio.space({})],
+  ['Backspace', () => audio.backspace({ pan: 0.6 })],
+  ['Shift down', () => audio.shift(true, { pan: -0.7 })],
+  ['Shift up', () => audio.shift(false, { pan: -0.7 })],
+  ['Bell', () => audio.bell({})],
+  ['Return (10)', () => audio.carriageReturn({ cols: 10, lines: 1 })],
+  ['Return (60)', () => audio.carriageReturn({ cols: 60, lines: 1 })],
+  ['Return x2 (45)', () => audio.carriageReturn({ cols: 45, lines: 2 })],
+  ['Line feed', () => audio.lineFeed({ lines: 1 })],
+  ['Line up x2', () => audio.lineFeed({ lines: 2, up: true })],
+  ['Move 1', () => audio.carriageMove({ cols: 1 })],
+  ['Tab (20)', () => audio.carriageMove({ cols: 20 })],
+  ['Jam', () => audio.jam({ pan: 0.2 })],
+  ['Knob x4', () => audio.knob({ clicks: 4 })],
+  ['Paper in', () => audio.paperIn()],
+  ['Paper out', () => audio.paperOut()],
+  ['Correction', () => { audio.backspace({ pan: 0.6 }); audio.correction({ at: 0.18 }); }],
+  ['Burst 12/s', () => { const s = 'the quick brown fox'; [...s].forEach((c, i) => c === ' ' ? audio.space({ at: i / 12 }) : audio.key({ char: c, pan: keyPan(c), at: i / 12 })); }],
+];
+for (const [label, fn] of EVENTS) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.onclick = () => { unlock(); fn(); };
+  $('events').appendChild(b);
+}
+
+// ---------- mix
+for (const [id, fn] of [['master', v => audio.setMaster(v)], ['machine', v => audio.setMachine(v)], ['amblevel', v => audio.setAmbienceLevel(v)]]) {
+  const el = $(id), out = el.nextElementSibling;
+  el.oninput = () => { fn(+el.value); out.textContent = (+el.value).toFixed(2); };
+  fn(+el.value);
+}
+for (const p of PROFILES) {
+  const b = document.createElement('button');
+  b.textContent = p.name; b.dataset.id = p.id;
+  b.onclick = () => { audio.setProfile(p.id); [...$('profiles').children].forEach(x => x.classList.toggle('on', x.dataset.id === p.id)); };
+  if (p.id === 'portable') b.classList.add('on');
+  $('profiles').appendChild(b);
+}
+for (const a of AMBIENCES) { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; $('amb').appendChild(o); }
+$('amb').onchange = () => { unlock(); audio.setAmbience($('amb').value || null); };
+let bellOn = true;
+$('bellBtn').onclick = () => { bellOn = !bellOn; audio.setBell(bellOn); $('bellBtn').textContent = bellOn ? 'On' : 'Off'; $('bellBtn').classList.toggle('on', bellOn); };
+
+// ---------- typing pad
+const MARGIN = 65;
+let col = 0, shiftHeld = false;
+const showCol = () => { $('col').innerHTML = `column <b>${col}</b> of ${MARGIN}`; };
+$('pad').addEventListener('keydown', e => {
+  if (e.key === 'Shift') { if (!e.repeat && !shiftHeld) { shiftHeld = true; audio.shift(true, { pan: e.location === 2 ? 0.75 : -0.75 }); } return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Enter') {
+    const { duration } = audio.carriageReturn({ cols: col, lines: 1 });
+    col = 0; showCol();
+    return;
+  }
+  if (e.key === 'Backspace') { if (col > 0) { audio.backspace({ pan: 0.62 }); col--; showCol(); } else e.preventDefault(); return; }
+  if (e.key === 'Tab') { e.preventDefault(); const n = 5 - (col % 5); if (col + n <= MARGIN) { audio.carriageMove({ cols: n }); col += n; showCol(); $('pad').setRangeText(' '.repeat(n), $('pad').selectionStart, $('pad').selectionEnd, 'end'); } return; }
+  if (e.key.length !== 1) return;
+  if (e.repeat) { e.preventDefault(); return; }
+  if (col >= MARGIN) { e.preventDefault(); audio.jam({ pan: keyPan(e.key) }); return; }
+  if (e.key === ' ') audio.space({});
+  else audio.key({ char: e.key, pan: keyPan(e.key), intensity: (e.shiftKey && e.key.toLowerCase() !== e.key) ? 1.3 : 1 });
+  col++; showCol();
+  if (col === MARGIN - 8) audio.bell({ at: 0.03 });
+});
+$('pad').addEventListener('keyup', e => { if (e.key === 'Shift' && shiftHeld) { shiftHeld = false; audio.shift(false, { pan: e.location === 2 ? 0.75 : -0.75 }); } });
+
+// ---------- scripted performance
+const COMMON = new Set(['th', 'he', 'in', 'er', 'an', 're', 'on', 'at', 'en', 'nd', 'ti', 'es', 'or', 'te', 'ed', 'is', 'it', 'al', 'ar', 'st', 'to', 'nt', 'ng', 'ha', 'ou']);
+function demoEvents(seed = 7) {
+  const R = rng(seed), ev = [];
+  const push = (t, name, ...args) => ev.push({ t: +t.toFixed(4), name, args });
+  let t = 0.25;
+  push(t, 'paperIn', {});
+  t += 1.55 + 0.45;
+  const typeLine = (text, bellAt = -1) => {
+    let prev = ' ', c = 0;
+    for (const ch of text) {
+      let gap = (1 / 7.2) * Math.exp(gauss(R) * 0.55);
+      if (prev === ' ') gap += 0.04 + R() * 0.12;
+      if (',.;:!?'.includes(prev)) gap += 0.14 + R() * 0.18;
+      if (COMMON.has((prev + ch).toLowerCase())) gap *= 0.72;
+      t += gap;
+      if (ch === ' ') push(t, 'space', { pan: 0 });
+      else if (ch !== ch.toLowerCase()) {
+        push(t - 0.1 - R() * 0.04, 'shift', true, { pan: -0.75 });
+        push(t, 'key', { char: ch, intensity: 1.28 + R() * 0.08, pan: keyPan(ch) });
+        push(t + 0.08 + R() * 0.05, 'shift', false, { pan: -0.75 });
+        t += 0.06;
+      } else push(t, 'key', { char: ch, intensity: 0.86 + R() * 0.24, pan: keyPan(ch) });
+      c++;
+      if (c === bellAt) push(t + 0.035, 'bell', {});
+      prev = ch;
+    }
+    return c;
+  };
+  let cols = typeLine('Dear Margaret,');
+  t += 0.45; push(t, 'carriageReturn', { cols, lines: 2 }); t += 0.12 + 0.004 * cols + 0.55;
+  cols = typeLine('It rained all night.', 14);
+  t += 0.5; push(t, 'carriageReturn', { cols, lines: 1 }); t += 0.12 + 0.004 * cols + 0.6;
+  push(t, 'paperOut', {});
+  t += 1.2 + 0.6;
+  return { events: ev, duration: Math.ceil(t * 10) / 10 };
+}
+
+// ---------- isolated events for analysis (one per slot, dry, limiter off)
+const CATALOG = [
+  ['key', [{ char: 'e' }], 'key e'], ['key', [{ char: 'n' }], 'key n'], ['key', [{ char: 'q' }], 'key q'],
+  ['key', [{ char: 'M', intensity: 1.35 }], 'key M heavy'], ['key', [{ char: 'a', intensity: 0.55 }], 'key a soft'],
+  ['key', [{ char: '.' }], 'key period'], ['space', [{}], 'space'], ['backspace', [{}], 'backspace'],
+  ['shift', [true, {}], 'shift down'], ['shift', [false, {}], 'shift up'], ['bell', [{}], 'bell'],
+  ['carriageReturn', [{ cols: 10, lines: 1 }], 'return 10'], ['carriageReturn', [{ cols: 60, lines: 2 }], 'return 60 x2'],
+  ['lineFeed', [{ lines: 1 }], 'line feed'], ['lineFeed', [{ lines: 2, up: true }], 'line up x2'],
+  ['carriageMove', [{ cols: 1 }], 'move 1'], ['carriageMove', [{ cols: 20 }], 'move 20'], ['jam', [{}], 'jam'],
+  ['knob', [{ clicks: 4 }], 'knob x4'], ['paperIn', [{}], 'paper in'], ['paperOut', [{}], 'paper out'],
+  ['correction', [{}], 'correction'],
+];
+function catalogEvents() {
+  const ev = [], marks = [];
+  let t = 0.3;
+  for (let k = 0; k < 8; k++) ev.push({ t: t + k * 0.25, name: 'key', args: [{ char: 'e', seed: 500 + k }] });
+  marks.push({ label: 'key e x8', name: 'repeat', t, end: t + 8 * 0.25, every: 0.25, count: 8 });
+  t += 8 * 0.25 + 0.4;
+  CATALOG.forEach(([name, args, label], i) => {
+    const o = (name === 'shift' ? args[1] : args[0]);
+    o.seed = 1000 + i;
+    const dur = name === 'paperIn' ? 1.8 : name === 'paperOut' ? 1.5 : name === 'bell' ? 1.9 : name === 'carriageReturn' ? 0.12 + 0.004 * o.cols + 0.6 : name === 'knob' ? 0.8 : 0.5;
+    ev.push({ t, name, args });
+    marks.push({ label, name, t, end: t + dur });
+    t += dur + 0.4;
+  });
+  return { events: ev, marks, duration: t + 0.2 };
+}
+function fastEvents() {
+  const R = rng(99), ev = [], s = 'now is the time for all good typists to come to the aid of the party';
+  let t = 0.2;
+  for (const ch of s) { ev.push({ t, name: ch === ' ' ? 'space' : 'key', args: [{ char: ch, pan: keyPan(ch), intensity: 0.9 + R() * 0.2 }] }); t += (1 / 12) * (0.88 + R() * 0.24); }
+  return { events: ev, duration: t + 0.6 };
+}
+
+async function post(name, data) {
+  const body = data instanceof ArrayBuffer ? data : new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data, null, 1));
+  const res = await fetch('/__file?name=' + encodeURIComponent(name), { method: 'POST', body });
+  return res.json();
+}
+const peakDb = buf => {
+  let p = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > p) p = v; } }
+  return +(20 * Math.log10(p || 1e-9)).toFixed(2);
+};
+
+async function renderDemo() {
+  status('Rendering demo...');
+  const { events, duration } = demoEvents();
+  const t0 = performance.now();
+  const buf = await audio.renderOffline(events, duration, { ambience: 'rain', ambienceLevel: 0.45, profile: 'portable', master: 0.9, machine: 1 });
+  const ms = performance.now() - t0;
+  const wav = TypewriterAudio.encodeWav(buf);
+  const r = await post('audio-demo.wav', wav);
+  await post('audio-demo.json', { events, duration });
+  const url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+  $('player').src = url; $('player').hidden = false;
+  status(`Demo: ${duration.toFixed(1)} s at ${buf.sampleRate} Hz, peak ${peakDb(buf)} dBFS, rendered in ${ms.toFixed(0)} ms -> ${r.file || 'post failed'}`);
+  return { duration, peak: peakDb(buf), renderMs: Math.round(ms), events: events.length, sampleRate: buf.sampleRate };
+}
+
+async function exportSet(parts = 'all') {
+  const out = {};
+  const want = k => parts === 'all' || parts === k;
+  if (want('catalog')) for (const p of PROFILES) {
+    status(`Catalog ${p.id}...`);
+    const { events, marks, duration } = catalogEvents();
+    const buf = await audio.renderOffline(events, duration, { ambience: null, profile: p.id, master: 1, machine: 1, limiter: false });
+    await post(`audio-catalog-${p.id}.wav`, TypewriterAudio.encodeWav(buf));
+    await post(`audio-catalog-${p.id}.json`, { marks, sampleRate: buf.sampleRate, duration });
+    out['catalog_' + p.id] = peakDb(buf);
+  }
+  if (want('catalog')) {
+    status('Fast typing...');
+    const f = fastEvents();
+    for (const lim of [true, false]) {
+      const buf = await audio.renderOffline(f.events, f.duration, { ambience: null, profile: 'portable', master: 1, machine: 1, limiter: lim });
+      await post(`audio-fast${lim ? '' : '-raw'}.wav`, TypewriterAudio.encodeWav(buf));
+      out['fast' + (lim ? '' : '_raw')] = peakDb(buf);
+    }
+    const fd = await audio.renderOffline(f.events, f.duration, { ambience: null, profile: 'desk', master: 1, machine: 1, limiter: true });
+    await post('audio-fast-desk.wav', TypewriterAudio.encodeWav(fd));
+    out.fast_desk = peakDb(fd);
+  }
+  if (want('amb')) for (const a of AMBIENCES) {
+    status(`Ambience ${a.id}...`);
+    const buf = await audio.ambienceBuffer(a.id);
+    await post(`audio-amb-${a.id}.wav`, TypewriterAudio.encodeWav(buf));
+    out['amb_' + a.id] = peakDb(buf);
+  }
+  status('Analysis set exported.');
+  return out;
+}
+
+$('renderBtn').onclick = () => renderDemo().catch(e => status('Error: ' + e.message));
+$('exportBtn').onclick = () => exportSet().catch(e => status('Error: ' + e.message));
+
+const t0 = performance.now();
+audio.ready.then(async () => {
+  const readyMs = performance.now() - t0;
+  const s = audio.stats;
+  $('meta').innerHTML = `<span>sample rate <b>${s.sampleRate}</b></span><span>buffers built in <b>${Math.round(s.buildMs.total)} ms</b></span>` +
+    `<span>portable <b>${Math.round(s.buildMs.portable)} ms</b></span><span>desk <b>${Math.round(s.buildMs.desk)} ms</b></span><span>room <b>${Math.round(s.roomMs)} ms</b></span>`;
+  const mode = new URLSearchParams(location.search).get('render');
+  if (mode) {
+    try {
+      const parts = mode === '1' ? 'all' : mode;
+      const demo = parts === 'all' || parts === 'demo' ? await renderDemo() : null;
+      const set = parts === 'demo' ? null : await exportSet(parts);
+      window.__done = { ok: true, readyMs: Math.round(readyMs), stats: audio.stats, demo, peaks: set };
+    } catch (e) {
+      window.__done = { ok: false, error: String(e && e.stack || e) };
+    }
+  } else window.__done = { ok: true, readyMs: Math.round(readyMs), stats: audio.stats };
+});
+</script>
+</body>
+</html>

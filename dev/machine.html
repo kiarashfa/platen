@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine bench</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cutive+Mono&family=Special+Elite&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<script type="importmap">{ "imports": { "three": "../js/vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { Stage } from '../js/scene.js';
+import { Machine, PRINT } from '../js/machine.js';
+window.__pending = true;
+const q = new URLSearchParams(location.search);
+await document.fonts.load('40px "Courier Prime"');
+await document.fonts.load('italic 600 40px "Cormorant Garamond"');
+const stage = new Stage(document.getElementById('c'));
+const m = new Machine();
+stage.scene.add(m.group);
+// stub page
+const pc = document.createElement('canvas');
+pc.width = 2040; pc.height = 2640;
+const ctx = pc.getContext('2d');
+ctx.fillStyle = '#f3ecdc'; ctx.fillRect(0, 0, pc.width, pc.height);
+ctx.fillStyle = '#1b1a1c'; ctx.font = '40px "Courier Prime"';
+const lines = ['October 9, 2026', '', 'Dear reader,', '', 'This is a typewriter made of code. Every key,', 'every spring and every sheet of paper is drawn', 'and synthesised in your browser. Type slowly,', 'listen to the bell, and let the carriage sing.', '', 'Yours,', 'Platen'];
+lines.forEach((l, i) => ctx.fillText(l, 10 * 24, (6 + i + 0.74) * 40));
+ctx.fillText('The quick brown fox', 10 * 24, (6 + lines.length + 0.74) * 40);
+const tex = new THREE.CanvasTexture(pc);
+tex.colorSpace = THREE.SRGBColorSpace;
+tex.anisotropy = stage.renderer.capabilities.getMaxAnisotropy();
+m.setPaperTexture(tex);
+if (q.get('color')) m.setColor(q.get('color'));
+if (q.get('keys')) m.setKeycaps(q.get('keys'));
+if (q.get('trim')) m.setTrim(q.get('trim'));
+if (q.get('mood')) stage.setMood(q.get('mood'));
+const row = +(q.get('row') ?? (6 + lines.length));
+m.setRow(row, 0);
+m.setColumn(+(q.get('col') ?? 29), 0);
+if (q.get('look')) stage.lookTarget = stage.look = +q.get('look');
+if (q.get('zoom')) stage.zoom = +q.get('zoom');
+if (q.get('cp')) { const [dist, elev, tUp, down] = q.get('cp').split(',').map(Number); stage.camParams = { dist, elev, tUp, down }; }
+window.M = m; window.S = stage; window.THREE = THREE;
+const clock = () => performance.now() / 1000;
+function loop() {
+  const t = clock();
+  const a = m.update(t);
+  const b = stage.frame(PRINT, t);
+  stage.render();
+  requestAnimationFrame(loop);
+}
+window.addEventListener('resize', () => stage.resize());
+loop();
+if (q.get('strike')) { m.strike(q.get('strike')); m.pressKey(q.get('strike')); }
+if (q.get('cam')) {
+  const [x, y, z, tx, ty, tz] = q.get('cam').split(',').map(Number);
+  stage.frame = () => { stage.camera.position.set(x, y, z); stage.camera.lookAt(tx, ty, tz); };
+}
+setTimeout(() => { window.__done = { ok: true }; }, +(q.get('delay') ?? 600));
+</script>
+</body>
+</html>

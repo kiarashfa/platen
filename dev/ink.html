@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platen — paper and ink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Cutive+Mono&family=Special+Elite&display=swap">
+<style>
+  :root {
+    --ui-paper: #f3ead6; --ui-paper-2: #e9dec4; --ui-ink: #2a221c; --ui-ink-2: #5a4c3f;
+    --ui-line: rgba(70, 52, 34, .22); --ui-brass: #b08d57; --ui-brass-2: #8c6b3c;
+    --ui-green: #2f4a3a; --ui-oxblood: #6a2328; --ui-shadow: 0 14px 40px rgba(18, 10, 4, .38);
+    --ui-serif: 'Cormorant Garamond', Georgia, serif;
+    --ui-type: 'Courier Prime', 'Courier New', monospace;
+    --ui-radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #2b2420; color: var(--ui-ink); }
+  body { font-family: var(--ui-type); font-size: 13px; padding: 20px 24px 60px; }
+  header { color: var(--ui-paper); display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
+  header h1 { font-family: var(--ui-serif); font-weight: 600; font-size: 30px; margin: 0; letter-spacing: .02em; }
+  header .stat { color: #d8c9a8; font-size: 12px; }
+  .sheet { background: var(--ui-paper); border: 1px solid var(--ui-brass); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow);
+           padding: 14px 16px 16px; margin: 0 0 18px; }
+  .sheet h2 { font-family: var(--ui-serif); font-weight: 600; font-size: 22px; margin: 0 0 2px; display: flex; align-items: center; gap: 10px; }
+  .sheet h2 .sw { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--ui-brass-2); display: inline-block; }
+  .sheet .note { color: var(--ui-ink-2); font-size: 12px; margin-bottom: 10px; border-bottom: 1px solid var(--ui-line); padding-bottom: 8px; }
+  .row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  figure { margin: 0; }
+  figcaption { font-size: 11px; color: var(--ui-ink-2); margin-top: 4px; letter-spacing: .04em; text-transform: uppercase; }
+  canvas.view { display: block; border: 1px solid var(--ui-line); box-shadow: 0 2px 8px rgba(30, 20, 10, .18); }
+  canvas.px { image-rendering: pixelated; }
+  .thumbs { display: flex; gap: 14px; flex-wrap: wrap; }
+  #crop { position: fixed; inset: 0; background: #1d1815; display: none; overflow: hidden; }
+  #crop canvas { image-rendering: pixelated; }
+  .bad { color: #ff9b8a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paper &amp; ink contact sheet</h1>
+  <span class="stat" id="stat">rendering…</span>
+</header>
+<div id="sheets"></div>
+<div id="crop"></div>
+<script type="module">
+import { GRID, PAPERS, INKS, TYPEFACES, loadFonts, PageSurface, strikeRect, paperTexture } from '../js/ink.js';
+import { hash32, rng } from '../js/util.js';
+
+window.__pending = true;
+const Q = new URLSearchParams(location.search);
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, kids = []) => { const e = document.createElement(tag); Object.assign(e, attrs); for (const k of kids) e.append(k); return e; };
+const timings = {};
+const checks = {};
+const C0 = 6, R0 = 4;
+
+// ---- strike generation -------------------------------------------------------------------
+let seedCounter = 1;
+function typeLine(text, x, y, o = {}) {
+  const out = [];
+  const r = rng(hash32('line', text, x, y, o.f || 'pica'));
+  let cx = x;
+  for (const ch of Array.from(text)) {
+    if (ch !== ' ') {
+      const light = 'aqzAQZ1!p;/'.includes(ch) ? 0.82 : 1;
+      const p = (o.p ?? 1) * light * (0.9 + 0.2 * r()) * (o.pj === 0 ? 1 : 1);
+      out.push({ c: ch, x: cx, y, k: o.k || 'k', p: +p.toFixed(3), s: hash32('s', seedCounter++), f: o.f || 'pica', w: o.w ?? 0.15 });
+    }
+    cx += 1;
+  }
+  return out;
+}
+function para(lines, x, y, o) { return lines.flatMap((t, i) => typeLine(t, x, y + i, o)); }
+
+const LETTER = [
+  'Dear Margaret, the rain has not let up since Tuesday and the',
+  'old machine keeps me company by the fire. I typed this with a',
+  'cup of tea going cold at my elbow. Yours ever, -- J.  (1957)',
+];
+function sampleStrikes() {
+  const S = [], G = [];
+  let y = R0;
+  S.push(...para(LETTER, C0, y, { f: 'pica' })); y += 4;
+  S.push(...para(['Elite: The quick brown fox jumps over the lazy dog. 0123456789', 'Special Elite face, already a little rough; $4.50 & 12% off!'], C0, y, { f: 'elite' })); y += 3;
+  S.push(...para(['Cutive: Pack my box with five dozen liquor jugs. @ # * ( ) ?', 'A lighter, finer face; "quotes", semicolons; and -- dashes.'], C0, y, { f: 'cutive' })); y += 3;
+  // red + black
+  S.push(...typeLine('IMPORTANT:', C0, y, { k: 'r', p: 1.1, w: 0.1 }));
+  S.push(...typeLine('remit the balance by the 14th of October.', C0 + 11, y, { k: 'k' })); y += 1;
+  // worn
+  S.push(...typeLine('Worn ribbon: the letters grow faint, grey and speckled now.', C0, y, { w: 0.88 })); y += 1;
+  S.push(...typeLine('Half-worn ribbon, w = 0.55, still quite readable at arm length.', C0, y, { w: 0.55 })); y += 1;
+  // pressure ramp
+  let cx = C0;
+  for (const [word, p] of [['feather', 0.35], ['light', 0.55], ['soft', 0.75], ['normal', 1.0], ['firm', 1.2], ['HEAVY', 1.45]]) {
+    S.push(...typeLine(word, cx, y, { p, pj: 0 })); cx += word.length + 1;
+  }
+  y += 1;
+  // overstrike / x-out
+  S.push(...typeLine('I was going to say nothing at all, then struck it out.', C0, y));
+  S.push(...typeLine('xxxxxxx', C0 + 19, y, { p: 1.1 }));
+  S.push(...typeLine('////', C0 + 27, y, { p: 1.0 }));
+  S.push(...typeLine('MMM', C0 + 58, y)); S.push(...typeLine('WWW', C0 + 58, y)); S.push(...typeLine('###', C0 + 58, y));
+  y += 1;
+  // correction ghost: 'teh' lifted, 'the' typed over; 'lorem' lifted alone
+  const ghostWord = typeLine('teh', C0 + 9, y);
+  G.push(...ghostWord.map(s => ({ ...s, g: 1 })));
+  S.push(...typeLine('Correct: the cat. Lifted:', C0, y).filter(s => s.x < C0 + 9 || s.x > C0 + 11));
+  S.push(...typeLine('the', C0 + 9, y));
+  G.push(...typeLine('mistake', C0 + 26, y, { p: 1.2 }).map(s => ({ ...s, g: 1 })));
+  y += 1;
+  // inks
+  S.push(...typeLine('Navy ribbon,', C0, y, { k: 'n' }));
+  S.push(...typeLine('sepia ribbon,', C0 + 13, y, { k: 's' }));
+  S.push(...typeLine('violet copying ribbon.', C0 + 27, y, { k: 'v' }));
+  S.push(...typeLine('RED', C0 + 50, y, { k: 'r', w: 0.6 }));
+  y += 1;
+  S.push(...typeLine('Heavy hand, fresh ribbon: a e o a e o g d b . , ; 8 @', C0, y, { p: 1.45, w: 0.02 }));
+  y += 2;
+  // typewriter-art patch: density ramp of single and stacked overstrikes
+  const ramp = [['.'], [':'], ['-'], ['='], ['+'], ['o'], ['*'], ['O'], ['8'], ['X'], ['#'], ['%'], ['M'], ['W'], ['@'],
+                ['O', 'X'], ['M', 'W'], ['#', '@'], ['8', '#'], ['M', '#', 'W'], ['O', 'X', '#', '@'], ['M', 'W', '#', '@', '8']];
+  for (let row = 0; row < 3; row++) {
+    ramp.forEach((stack, i) => { for (const ch of stack) S.push(...typeLine(ch, C0 + i * 2, y + row, { p: 1.1 })); });
+  }
+  y += 3;
+  // a small shaded disc in half steps (Draw mode)
+  // a shaded ball in half steps (Draw mode): 12 px per half column, 20 px per half row
+  const levels = [[' '], ['.'], [':'], ['+'], ['o'], ['O'], ['8'], ['#'], ['M', '#'], ['M', 'W', '#'], ['M', 'W', '#', '@']];
+  const radPx = 128;
+  for (let j = -7; j <= 7; j++) for (let i = -11; i <= 11; i++) {
+    const x = C0 + 6 + i * 0.5, yy = y + 3 + j * 0.5;
+    const nx = (i * 12) / radPx, ny = (j * 20) / radPx;
+    const d2 = nx * nx + ny * ny;
+    if (d2 > 1) continue;
+    const nz = Math.sqrt(1 - d2);
+    const lit = Math.max(0, -nx * 0.45 - ny * 0.6 + nz * 0.66);
+    const lv = Math.max(1, Math.round((1 - lit) * (levels.length - 1)));
+    for (const ch of levels[lv]) S.push({ c: ch, x, y: yy, k: 'k', p: 1.05, s: hash32('disc', i, j, ch), f: 'pica', w: 0.2 });
+  }
+  // ascii frame next to it
+  S.push(...para(['+--------------+', '|  PLATEN  ART |', '|  ~ @ # % & ~ |', '+--------------+'], C0 + 26, y + 1, { f: 'cutive', k: 'v' }));
+  y += 7;
+  return { strikes: S, ghosts: G, rows: y - R0 };
+}
+
+function letterPage() {
+  const words = ('it was a bright cold day in april and the clocks were striking thirteen the hallway smelt of boiled cabbage and old rag mats ' +
+    'at one end of it a coloured poster too large for indoor display had been tacked to the wall it depicted simply an enormous face more than a metre wide ' +
+    'the face of a man of about forty five with a heavy black moustache and ruggedly handsome features').split(' ');
+  const S = [];
+  const r = rng(77);
+  let x = 10, y = 6, wi = 0;
+  S.push(...typeLine('October 9, 1957', 55, 3));
+  while (S.length < 3000 && y < 62) {
+    const w = words[wi++ % words.length];
+    if (x + w.length > 75) { x = 10; y += 1; if (r() < 0.12) { y += 1; x = 15; } }
+    S.push(...typeLine((r() < 0.05 ? w.toUpperCase() : w), x, y, { p: 0.85 + 0.3 * r(), w: 0.1 + (y / 66) * 0.25 }));
+    x += w.length + 1;
+  }
+  return S.slice(0, 3000);
+}
+
+// ---- helpers -----------------------------------------------------------------------------
+function crop(src, x, y, w, h, z = 1, smooth = false) {
+  const c = el('canvas'); c.width = Math.round(w * z); c.height = Math.round(h * z);
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = smooth; g.imageSmoothingQuality = 'high';
+  g.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+  return c;
+}
+async function dump(name, canvas) {
+  if (!Q.has('dump')) return;
+  await fetch('/__shot', { method: 'POST', body: JSON.stringify({ name, data: canvas.toDataURL('image/png') }) });
+}
+function hashPixels(canvas) {
+  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < d.length; i += 3) { h ^= d[i]; h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+function sameRegion(a, b, r) {
+  const da = a.getContext('2d').getImageData(r.x, r.y, r.w, r.h).data, db = b.getContext('2d').getImageData(r.x, r.y, r.w, r.h).data;
+  let diff = 0, maxd = 0;
+  for (let i = 0; i < da.length; i++) { const d = Math.abs(da[i] - db[i]); if (d) diff++; if (d > maxd) maxd = d; }
+  return { diff, maxd };
+}
+
+// ---- main --------------------------------------------------------------------------------
+async function main() {
+  let t = performance.now();
+  const fontsOk = await loadFonts();
+  timings.fontsMs = Math.round(performance.now() - t);
+  const sample = sampleStrikes();
+  const regionX = (C0 - 1) * GRID.CW, regionY = (R0 - 1) * GRID.RH;
+  const regionW = 66 * GRID.CW, regionH = (sample.rows + 1) * GRID.RH;
+  const only = Q.get('paper');
+  const papers = only ? PAPERS.filter(p => p.id === only) : PAPERS;
+
+  // crop mode: one region, magnified, filling the viewport
+  if (Q.has('crop')) {
+    const [pid, what] = Q.get('crop').split('-');
+    const surf = new PageSurface({ paper: pid, scale: +(Q.get('scale') || 1) });
+    surf.render(sample.strikes, sample.ghosts);
+    const z = +(Q.get('z') || 2), s = surf.scale;
+    const cx = +(Q.get('x') ?? regionX / GRID.CW) * GRID.CW * s, cy = +(Q.get('y') ?? regionY / GRID.RH) * GRID.RH * s;
+    const v = crop(surf.canvas, cx, cy, innerWidth / z, innerHeight / z, z, Q.has('smooth'));
+    $('#crop').style.display = 'block'; $('#crop').append(v);
+    window.__done = { ok: true, fontsOk, paperMs: surf.stats.paperMs, renderMs: surf.stats.lastRenderMs };
+    return;
+  }
+
+  const surf = new PageSurface({ paper: papers[0].id, scale: 1 });
+  timings.paperMs = {};
+  timings.sampleRenderMs = {};
+  for (const p of papers) {
+    surf.setPaper(p.id);
+    timings.paperMs[p.id] = Math.round(surf.stats.paperMs);
+    t = performance.now();
+    surf.render(sample.strikes, sample.ghosts);
+    timings.sampleRenderMs[p.id] = Math.round(performance.now() - t);
+    const sec = el('section', { className: 'sheet' });
+    sec.append(el('h2', {}, [el('span', { className: 'sw', style: `background:${p.swatch}` }), p.name + ' ',
+      el('small', { textContent: `(${p.id})`, style: 'font-size:14px;color:var(--ui-ink-2)' })]));
+    sec.append(el('div', { className: 'note', textContent: `${p.desc}  paper ${timings.paperMs[p.id]} ms, ${sample.strikes.length} strikes + ${sample.ghosts.length} ghosts ${timings.sampleRenderMs[p.id]} ms` }));
+    const row = el('div', { className: 'row' });
+    // overview at 50%
+    const ov = crop(surf.canvas, regionX, regionY, regionW, regionH, 0.5, true);
+    ov.className = 'view';
+    row.append(el('figure', {}, [ov, el('figcaption', { textContent: 'sample region at 50%' })]));
+    // 1:1 crops
+    const c1 = crop(surf.canvas, regionX + 12, regionY + 20, 560, 170);
+    c1.className = 'view';
+    const c2 = crop(surf.canvas, regionX + 12, regionY + 20 + 10 * GRID.RH, 560, 300);
+    c2.className = 'view';
+    const col = el('div', {}, [el('figure', {}, [c1, el('figcaption', { textContent: '1:1 pica letter' })]), el('figure', { style: 'margin-top:8px' }, [c2, el('figcaption', { textContent: '1:1 red, worn, pressure, x-out, ghost, inks' })])]);
+    row.append(col);
+    // 3x close-ups (nearest neighbour: the real pixels)
+    const z1 = crop(surf.canvas, regionX + 18, regionY + 30, 180, 90, 3); z1.className = 'view px';
+    const z2 = crop(surf.canvas, C0 * GRID.CW + 24 * GRID.CW, 19 * GRID.RH - 4, 180, 90, 3); z2.className = 'view px';
+    const z3 = crop(surf.canvas, C0 * GRID.CW - 6, 26 * GRID.RH - 10, 180, 90, 3); z3.className = 'view px';
+    row.append(el('div', { className: 'row' }, [
+      el('figure', {}, [z1, el('figcaption', { textContent: '3x fresh ribbon' })]),
+      el('figure', {}, [z2, el('figcaption', { textContent: '3x lift-off ghost' })]),
+      el('figure', {}, [z3, el('figcaption', { textContent: '3x overstruck art' })]),
+    ]));
+    sec.append(row);
+    $('#sheets').append(sec);
+    await dump(`ink-${p.id}-letter`, c1);
+    await dump(`ink-${p.id}-lines`, c2);
+    await dump(`ink-${p.id}-art`, crop(surf.canvas, regionX + 12, regionY + 20 + 17 * GRID.RH, 900, 420));
+    await dump(`ink-${p.id}-zoom`, crop(surf.canvas, regionX + 18, regionY + 30, 220, 110, 3));
+    await dump(`ink-${p.id}-zoom4`, crop(surf.canvas, regionX + 20 + 9 * GRID.CW, regionY + 34 + 11 * GRID.RH, 150, 90, 4));
+    await dump(`ink-${p.id}-ghost`, crop(surf.canvas, C0 * GRID.CW - 6, 19 * GRID.RH - 6, 34 * GRID.CW, 52, 3));
+    await dump(`ink-${p.id}-fresh4`, crop(surf.canvas, C0 * GRID.CW - 4, 4 * GRID.RH + 2, 170, 90, 4));
+    await dump(`ink-${p.id}-region`, crop(surf.canvas, regionX, regionY, regionW, regionH, 0.5, true));
+    await dump(`ink-${p.id}-paper`, crop(surf.paperCanvas, 1300, 1700, 600, 400));
+    timings.paperProf = timings.paperProf || {};
+    timings.paperProf[p.id] = surf._paper.prof;
+    await new Promise(r => setTimeout(r, 0));
+  }
+  if (Q.has('quick')) { window.__done = { ok: true, fontsOk, timings }; return; }
+
+  // determinism and path equivalence (ivory)
+  surf.setPaper('ivory');
+  surf.render(sample.strikes, sample.ghosts);
+  const h1 = hashPixels(surf.canvas);
+  surf.render(sample.strikes, sample.ghosts);
+  checks.deterministic = h1 === hashPixels(surf.canvas);
+  const surf2 = new PageSurface({ paper: 'ivory', scale: 1 });
+  surf2.render([], sample.ghosts);
+  for (const s of sample.strikes) surf2.add(s);
+  const R = { x: regionX, y: regionY, w: regionW, h: regionH };
+  checks.addVsRender = sameRegion(surf.canvas, surf2.canvas, R);
+  const rr = { x: regionX + 200, y: regionY + 100, w: 300, h: 200 };
+  surf2.redraw(rr, sample.strikes, sample.ghosts);
+  checks.redrawVsRender = sameRegion(surf.canvas, surf2.canvas, R);
+  surf2.takeDirty();
+  surf2.add(sample.strikes[0]);
+  checks.dirtyAfterAdd = surf2.takeDirty();
+  checks.dirtyEmpty = surf2.takeDirty();
+  surf2.dispose();
+
+  // full 3,000-strike page
+  const page = letterPage();
+  t = performance.now();
+  surf.render(page, []);
+  timings.render3000Ms = Math.round(performance.now() - t);
+  const surf3 = new PageSurface({ paper: 'ivory', scale: 1 });
+  t = performance.now();
+  for (const s of page) surf3.add(s);
+  const addTotal = performance.now() - t;
+  timings.addAvgMs = +(addTotal / page.length).toFixed(3);
+  timings.add3000TotalMs = Math.round(addTotal);
+  checks.addPage = sameRegion(surf.canvas, surf3.canvas, { x: 0, y: 0, w: surf.width, h: surf.height });
+  surf3.dispose();
+  const fullSec = el('section', { className: 'sheet' });
+  fullSec.append(el('h2', { textContent: 'Full page, 3,000 strikes' }));
+  fullSec.append(el('div', { className: 'note', textContent: `render() ${timings.render3000Ms} ms at scale 1, add() average ${timings.addAvgMs} ms` }));
+  const fr = el('div', { className: 'row' });
+
+  // whole page at 0.25
+  const quarter = new PageSurface({ paper: 'ivory', scale: 0.25 });
+  t = performance.now();
+  quarter.render(page, []);
+  timings.render025Ms = Math.round(performance.now() - t);
+  timings.paper025Ms = Math.round(quarter.stats.paperMs);
+  const qv = crop(quarter.canvas, 0, 0, quarter.width, quarter.height); qv.className = 'view';
+  fr.append(el('figure', {}, [qv, el('figcaption', { textContent: `scale 0.25 (${quarter.width}×${quarter.height}), ${timings.render025Ms} ms` })]));
+  const fv = crop(surf.canvas, 0, 0, surf.width, surf.height, 0.25, true); fv.className = 'view';
+  fr.append(el('figure', {}, [fv, el('figcaption', { textContent: 'scale 1 downsampled by the browser to 25%' })]));
+  const det = crop(surf.canvas, 230, 220, 640, 330); det.className = 'view';
+  fr.append(el('figure', {}, [det, el('figcaption', { textContent: 'scale 1, 1:1 detail' })]));
+  fullSec.append(fr);
+  $('#sheets').append(fullSec);
+  await dump('ink-page025', qv);
+  await dump('ink-page1-detail', det);
+  await dump('ink-page1-quarter', fv);
+
+  // thumbnails at 0.15 for every paper (the sample)
+  const thSec = el('section', { className: 'sheet' });
+  thSec.append(el('h2', { textContent: 'Thumbnails at scale 0.15 and 0.25' }));
+  const th = el('div', { className: 'thumbs' });
+  const thumbsCanvas = el('canvas'); thumbsCanvas.width = 6 * 320; thumbsCanvas.height = 420;
+  const tg = thumbsCanvas.getContext('2d'); tg.fillStyle = '#2b2420'; tg.fillRect(0, 0, thumbsCanvas.width, thumbsCanvas.height);
+  timings.thumb015Ms = {};
+  let i = 0;
+  for (const p of PAPERS) {
+    t = performance.now();
+    const s15 = new PageSurface({ paper: p.id, scale: 0.15 });
+    s15.render(i % 2 ? page : sample.strikes.concat(page.filter(s => s.y > 36)), i % 2 ? [] : sample.ghosts);
+    timings.thumb015Ms[p.id] = Math.round(performance.now() - t);
+    const v = crop(s15.canvas, 0, 0, s15.width, s15.height); v.className = 'view';
+    th.append(el('figure', {}, [v, el('figcaption', { textContent: `${p.name} 0.15` })]));
+    tg.drawImage(s15.canvas, i * 320 + 4, 4);
+    i++;
+  }
+  thSec.append(th);
+  $('#sheets').append(thSec);
+  await dump('ink-thumbs015', thumbsCanvas);
+  // bump maps
+  const bumps = el('canvas'); bumps.width = 6 * 260; bumps.height = 200;
+  const bg = bumps.getContext('2d');
+  PAPERS.forEach((p, k) => { const tx = paperTexture(p.id, 1); bg.drawImage(tx.bumpCanvas, 300, 300, 250, 190, k * 260, 0, 250, 190); });
+  bumps.className = 'view';
+  thSec.append(el('h2', { textContent: 'Bump maps (half resolution, 250 × 190 crop each)', style: 'margin-top:14px' }));
+  thSec.append(el('figure', {}, [bumps, el('figcaption', { textContent: PAPERS.map(p => p.name).join('  ·  ') })]));
+  await dump('ink-bumps', bumps);
+
+  const ok = fontsOk && checks.deterministic && checks.addVsRender.maxd <= 1 && checks.redrawVsRender.maxd <= 1;
+  $('#stat').innerHTML = `fonts ${fontsOk ? 'ok' : '<span class=bad>FAILED</span>'} · render 3,000 strikes ${timings.render3000Ms} ms · add avg ${timings.addAvgMs} ms · ` +
+    `deterministic ${checks.deterministic} · add≡render maxΔ ${checks.addVsRender.maxd} · redraw≡render maxΔ ${checks.redrawVsRender.maxd}`;
+  window.__done = { ok, fontsOk, timings, checks };
+}
+main().catch(e => { console.error(e); window.__done = { ok: false, error: String(e && e.stack || e) }; });
+</script>
+</body>
+</html>
