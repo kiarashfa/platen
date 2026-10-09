@@ -262,7 +262,8 @@ export class UI {
     const t = h('table', { class: 'keys-help' }, ...rows.map(([k, v]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, v))));
     this.body.append(
       this._sec('Keys', t),
-      this._sec('Draw mode', h('p', { class: 'note' }, 'Typewriter art the old way: arrows move half a space or half a line, Overstrike keeps the carriage still so you can stack letters into darker tones. Sketch & picture lets you draw shapes or drop in a photo; the machine then types it out by itself.')),
+      this._sec('Draw mode', h('p', { class: 'note' }, 'Typewriter art the old way: arrows move half a space or half a line, Overstrike keeps the carriage still so you can stack letters into darker tones. Sketch & picture lets you draw shapes or drop in a photo; the machine then types it out by itself, at a typist’s pace.')),
+      this._sec('Guide', h('p', { class: 'note' }, 'Own a real typewriter? Guide turns the sheet (or a planned drawing) into setup steps and line-by-line instructions: spaces, characters and overstrikes. Tick lines off as you type, or print it.')),
       this._sec('About', h('p', { class: 'note' }, 'Platen is a cozy typewriter for slow writing and typewriter art. The machine is modelled in Three.js, the paper and ink are drawn pixel by pixel, and every sound is synthesised. Your pages stay in this browser.')),
     );
   }
