@@ -1,6 +1,7 @@
 // Panels, reading view, pages, welcome card. Plain DOM; every control writes through app.set().
 import { COLORS, TRIMS, KEYCAPS } from './machine.js';
-import { PAPERS, RIBBONS, INKS, TYPEFACES, PageSurface } from './ink.js';
+import { PAPERS, RIBBONS, INKS, TYPEFACES, PageSurface, strikeRect } from './ink.js';
+import { separateInk, cropRect, cropData, exportName } from './export.js';
 import { MOODS } from './scene.js';
 import { LAYOUT, pageText, wordCount } from './page.js';
 
@@ -61,6 +62,18 @@ export class UI {
     // draw bar
     document.getElementById('dbPlanner').addEventListener('click', () => { app.unlockAudio(); app.openPlanner(); });
     document.getElementById('dbGuide').addEventListener('click', () => app.openGuide());
+    document.getElementById('dbImage').addEventListener('click', () => this.openExport());
+    document.getElementById('btnExport').addEventListener('click', () => { app.unlockAudio(); this.openExport(); });
+    // save as image dialog
+    for (const [id, key, num] of [['exWhat', 'what', false], ['exBg', 'bg', false], ['exSize', 'size', true]]) {
+      document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener('click', () => {
+        if (b.disabled) return;
+        this.ex[key] = num ? +b.dataset.v : b.dataset.v;
+        this._exportPreview();
+      }));
+    }
+    document.querySelectorAll('#exporter [data-ex]').forEach(b => b.addEventListener('click', () => this._exportAct(b.dataset.ex, b)));
+    document.getElementById('exporter').addEventListener('click', e => { if (e.target.id === 'exporter') this.closeExport(); });
     document.getElementById('dbOver').addEventListener('click', () => app.set('over', !app.s.over));
     document.getElementById('dbHalf').addEventListener('click', () => app.set('half', !app.s.half));
     document.querySelectorAll('#dbPress button').forEach(b => b.addEventListener('click', () => app.set('pressure', +b.dataset.v)));
@@ -77,7 +90,7 @@ export class UI {
 
   // ------------------------------------------------------------ drawer
   drawerOpen() { return this.drawer.classList.contains('open'); }
-  modalOpen() { return document.getElementById('reader').classList.contains('open'); }
+  modalOpen() { return document.getElementById('reader').classList.contains('open') || document.getElementById('exporter').classList.contains('open'); }
   welcomeOpen() { return !document.getElementById('welcome').hidden; }
 
   openDrawer(name) {
@@ -239,6 +252,7 @@ export class UI {
         h('div', { class: 'row2' },
           h('button', { class: 'btn', onclick: () => this.openReader(app.state.current) }, 'Read it'),
           h('button', { class: 'btn', onclick: () => { app.newSheet(); } }, 'Fresh sheet')),
+        h('button', { class: 'btn', onclick: () => this.openExport() }, 'Save as image (PNG)'),
       ),
       this._sec('Everything',
         h('div', { class: 'row2' },
@@ -256,6 +270,7 @@ export class UI {
       ['Enter', 'Carriage return and line feed'], ['Backspace', 'Back one space (lifts the letter with correction tape)'],
       ['Tab', 'Jump to the next tab stop'], ['Arrows', 'Move the carriage / roll the platen (half steps in Draw)'],
       ['Ctrl+R', 'Switch ribbon colour (black / red)'], ['Ctrl+Enter', 'Pull the sheet and roll in a fresh one'],
+      ['Ctrl+S', 'Save the sheet, just the ink, or a photo of the machine as a PNG'],
       ['Esc', 'Hide everything but the machine; stops auto typing'], ['Scroll', 'Look up the page'], ['Ctrl+scroll', 'Zoom'],
       ['Click the sheet', 'Move the carriage there'], ['Click the lever', 'Carriage return'], ['Click a knob', 'Roll the platen one line'],
     ];
@@ -335,7 +350,7 @@ export class UI {
       catch { app.toast('Copying was blocked by the browser'); }
     }
     if (act === 'txt') download(new Blob([pageText(p) + '\n'], { type: 'text/plain;charset=utf-8' }), `platen-page-${i + 1}.txt`);
-    if (act === 'png') document.getElementById('readerCanvas').toBlob(b => download(b, `platen-page-${i + 1}.png`), 'image/png');
+    if (act === 'png') { this.closeReader(); this.openExport(i); }
     if (act === 'print') this.printPages([i]);
     if (act === 'guide') { this.closeReader(); app.openGuide(p.strikes, `Page ${i + 1}`); }
     if (act === 'load') { this.closeReader(); this.closeDrawer(); app.openPage(i); }
@@ -370,6 +385,106 @@ export class UI {
     d.write(`<!doctype html><html><head><title>Platen pages</title><style>@page{size:letter;margin:0}html,body{margin:0}img{display:block;width:8.5in;height:11in;page-break-after:always}</style></head><body>${imgs.map(s => `<img src="${s}">`).join('')}</body></html>`);
     d.close();
     setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => f.remove(), 2000); }, 400);
+  }
+
+  // ------------------------------------------------------------ save as image
+  openExport(i = this.app.state.current) {
+    const app = this.app;
+    this.ex = this.ex || { what: 'sheet', bg: 'paper', size: 1 };
+    this.ex.page = i;
+    this.closeDrawer();
+    const m = document.getElementById('exporter');
+    m.classList.add('open'); m.setAttribute('aria-hidden', 'false');
+    this._exportPreview();
+  }
+
+  closeExport() {
+    const m = document.getElementById('exporter');
+    m.classList.remove('open'); m.setAttribute('aria-hidden', 'true');
+  }
+
+  // build the image: full = the real output size, otherwise a quick standard-size preview
+  async _exportCanvas(full) {
+    const app = this.app, { what, bg, size, page: i } = this.ex;
+    if (what === 'photo') return app.snapshot(full ? (size > 1 ? 3 : 2) : 1);
+    const p = app.state.pages[i];
+    const scale = full ? size : 1;
+    let surf = app.surface;
+    if (i !== app.state.current || scale !== 1) {
+      surf = new PageSurface({ paper: p.paper, scale });
+      surf.render(p.strikes, p.ghosts);
+    }
+    const W = surf.width, H = surf.height;
+    let rect = { x: 0, y: 0, w: W, h: H };
+    if (what === 'ink') {
+      const inked = p.strikes.filter(s => !s.g);
+      rect = cropRect(inked.map(s => strikeRect(s, scale)), 60 * scale, W, H) || rect;
+    }
+    const pageData = surf.canvas.getContext('2d').getImageData(rect.x, rect.y, rect.w, rect.h);
+    let data = pageData.data;
+    if (bg !== 'paper') {
+      const pc = surf.paperCanvas;
+      const paperData = pc.getContext('2d').getImageData(rect.x, rect.y, rect.w, rect.h).data;
+      data = separateInk(data, paperData, bg === 'clear' ? 'clear' : 'white');
+    }
+    const out = document.createElement('canvas');
+    out.width = rect.w; out.height = rect.h;
+    out.getContext('2d').putImageData(new ImageData(data, rect.w, rect.h), 0, 0);
+    if (surf !== app.surface && surf.dispose) surf.dispose();
+    return out;
+  }
+
+  async _exportPreview() {
+    const app = this.app, ex = this.ex, p = app.state.pages[ex.page];
+    const hasInk = p.strikes.some(s => !s.g);
+    if (!hasInk && ex.what === 'ink') ex.what = 'sheet';
+    const photo = ex.what === 'photo';
+    const sync = (id, key) => document.querySelectorAll(`#${id} button`).forEach(b => {
+      b.setAttribute('aria-checked', String(String(ex[key]) === b.dataset.v));
+    });
+    sync('exWhat', 'what'); sync('exBg', 'bg'); sync('exSize', 'size');
+    document.querySelector('#exWhat [data-v="ink"]').disabled = !hasInk;
+    document.querySelectorAll('#exBg button').forEach(b => { b.disabled = photo; });
+    document.getElementById('exPage').textContent = photo ? 'What you see on the desk right now' : `Page ${ex.page + 1}`;
+    const token = (this._exToken = (this._exToken || 0) + 1);
+    const src = await this._exportCanvas(false);
+    if (token !== this._exToken) return;
+    const cv = document.getElementById('exCanvas');
+    cv.width = src.width; cv.height = src.height;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(src, 0, 0);
+    document.getElementById('exStage').classList.toggle('checker', !photo && ex.bg === 'clear');
+    const k = photo ? Math.min(ex.size > 1 ? 3 : 2, 5000 / src.width) : ex.size;   // the preview is 1x
+    const w = Math.round(src.width * k), h = Math.round(src.height * k);
+    document.getElementById('exMeta').textContent = photo ? `${w} × ${h} px` : `${w} × ${h} px · ${Math.round(240 * ex.size)} dpi`;
+  }
+
+  async _exportAct(act, btn) {
+    const app = this.app, ex = this.ex;
+    if (act === 'close') return this.closeExport();
+    const side = btn.closest('.ex-side');
+    side.classList.add('ex-busy');
+    const label = btn.textContent;
+    btn.textContent = 'Rendering…';
+    await new Promise(r => setTimeout(r, 30));      // let the label paint before the heavy work
+    try {
+      const cv = await this._exportCanvas(act === 'save');
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (act === 'save') {
+        download(blob, exportName(ex.what, ex.page + 1, ex.what === 'photo' ? 'paper' : ex.bg));
+        app.toast('Saved ' + exportName(ex.what, ex.page + 1, ex.what === 'photo' ? 'paper' : ex.bg));
+      } else {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        app.toast('Image copied. Paste it anywhere.');
+      }
+    } catch (e) {
+      console.warn(e);
+      app.toast(act === 'copy' ? 'This browser blocked copying images. Use Save PNG.' : 'Could not make the image.');
+    } finally {
+      btn.textContent = label;
+      side.classList.remove('ex-busy');
+    }
   }
 
   // ------------------------------------------------------------ progress + welcome

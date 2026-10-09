@@ -301,3 +301,19 @@ body.typing .brand:hover, body.typing .tools:hover, body.typing .status:hover, b
 .ribbon-lever[hidden] { display: none; }
 .db-guide { display: inline-flex; align-items: center; gap: 6px; }
 .db-guide svg { width: 16px; height: 16px; }
+
+/* ---------------------------------------------------------------- save as image */
+.ex-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-width: 0; }
+.ex-stage { display: grid; place-items: center; border-radius: 3px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); overflow: hidden; background: #2a221c; }
+.ex-stage.checker { background: repeating-conic-gradient(#d9d2c4 0 25%, #f3eee4 0 50%) 0 0 / 22px 22px; }
+.ex-stage canvas { display: block; width: auto; height: auto; max-width: calc(100vw - 360px); max-height: calc(100vh - 110px); }
+.ex-meta { margin: 0; font-size: 12px; color: rgba(234, 223, 197, .72); letter-spacing: .04em; }
+.ex-side .sec { padding: 10px 0 6px; }
+.ex-side .btn.primary { margin-top: 14px; }
+.seg button[disabled] { opacity: .35; cursor: default; }
+.ex-busy { opacity: .6; pointer-events: none; }
+@media (max-width: 720px) {
+  .ex-stage canvas { max-width: calc(100vw - 24px); max-height: 46vh; }
+  .ex-side .sec, .ex-side .btn { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) { #exporter { justify-content: flex-start; overflow-y: auto; } }

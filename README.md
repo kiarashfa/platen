@@ -51,7 +51,8 @@ pixel by pixel, and every clack, ratchet and ding is synthesised as you type.
 | **Margin bell & lock** | The bell rings near the right margin. Keep typing and the keys jam until you press <kbd>Enter</kbd>. Or switch *Line ends* to **Auto return**. |
 | **Correction tape** | <kbd>Backspace</kbd> lifts the letter off and leaves a faint ghost. Or choose **Ink is forever** and overstrike like it's 1958. |
 | **Black & red ribbon** | <kbd>Ctrl</kbd>+<kbd>R</kbd> flips the ribbon to its red half. |
-| **Pages** | Full sheets roll out and a fresh one rolls in. Read them flat, copy the text, save `.txt` or `.png`, or print to PDF. |
+| **Pages** | Full sheets roll out and a fresh one rolls in. Read them flat, copy the text, save `.txt`, or print to PDF. |
+| **Save as image** | <kbd>Ctrl</kbd>+<kbd>S</kbd>: the whole sheet, **just the ink** cropped to your text or drawing (on paper, white or a transparent background), or a photo of the machine. Standard 240 dpi or large 360 dpi PNG, or copy it straight to the clipboard. |
 
 ### 🎨 Draw
 
@@ -63,6 +64,9 @@ Typewriter art the old way, and an easy way.
   (shade, line or stipple style). Press **Type it** and the machine types the whole thing by itself the way
   a person would: the space bar between marks, backspace before every overstrike, a carriage return at the
   end of each line. At a typist's pace (or a brisk one), with **Finish now** when you can't wait.
+
+- **Save it**: <kbd>Ctrl</kbd>+<kbd>S</kbd> exports just the drawing as a PNG, on its paper or on a transparent
+  background, ready to post or print.
 
 <p align="center"><img src="docs/draw.jpg" alt="Draw mode: a teacup typed in characters on the sheet" width="88%"></p>
 
@@ -121,6 +125,7 @@ window**, **fireplace**, **mantel clock**, **summer night**. Headphones recommen
 | <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Move the carriage, roll the platen (half steps in Draw) |
 | <kbd>Ctrl</kbd>+<kbd>R</kbd> | Black / red half of the ribbon |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Pull the sheet, roll in a fresh one |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save as image (sheet, just the ink, or the machine) |
 | <kbd>Esc</kbd> | Hide everything but the machine; stop auto typing |
 | Scroll / <kbd>Ctrl</kbd>+scroll | Look up the page / zoom |
 | Click the sheet, lever, knob | Move the carriage there / carriage return / roll the platen |
@@ -137,6 +142,7 @@ js/scene.js         desk, felt pad, lamp, the three moods, camera rig
 js/ink.js           procedural papers and the ink of each impression, drawn pixel by pixel
 js/audio.js         the sound engine: modal synthesis of every mechanical event, room reverb, ambiences
 js/page.js          carriage rules (margins, bell, lock, tabs, spacing) and text export
+js/export.js        PNG export: lifts the ink off the paper (transparent / white) and crops to it
 js/art.js           typewriter art: picture -> characters (shade / line / stipple), shapes, banners
 js/planner.js       the Sketch & picture panel
 js/guide.js         the typing guide: a drawing -> line-by-line instructions for a real typewriter

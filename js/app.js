@@ -669,7 +669,7 @@ class App {
 
     window.addEventListener('keydown', e => {
       if (blocked()) {
-        if (e.key === 'Escape' && this.ui.modalOpen()) this.ui.closeReader();
+        if (e.key === 'Escape' && this.ui.modalOpen()) { this.ui.closeReader(); this.ui.closeExport(); }
         return;
       }
       const t = e.target;
@@ -691,6 +691,7 @@ class App {
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'Enter') { e.preventDefault(); this.newSheet(); }
         else if (e.key.toLowerCase() === 'r' && !e.shiftKey) { e.preventDefault(); this.toggleRibbon(); }
+        else if (e.key.toLowerCase() === 's') { e.preventDefault(); this.ui.openExport(); }
         return;
       }
       if (e.altKey && e.key.length === 1) return;
@@ -809,6 +810,23 @@ class App {
     }, { passive: false });
     if (isTouch) document.getElementById('kbdBtn').hidden = false;
     document.getElementById('kbdBtn').addEventListener('click', () => { this.unlockAudio(); ta.focus(); });
+  }
+
+  // ------------------------------------------------------------ a photo of the machine, at mult x the css size
+  snapshot(mult = 2) {
+    const r = this.stage.renderer, cv = r.domElement;
+    const pr = r.getPixelRatio();
+    const w = cv.clientWidth || window.innerWidth, h = cv.clientHeight || window.innerHeight;
+    r.setPixelRatio(Math.min(mult, 5000 / w));
+    r.setSize(w, h, false);
+    this.stage.render();
+    const out = document.createElement('canvas');
+    out.width = cv.width; out.height = cv.height;
+    out.getContext('2d').drawImage(cv, 0, 0);           // same task as the render: the buffer is intact
+    r.setPixelRatio(pr);
+    r.setSize(w, h, false);
+    this.stage.dirty = true;
+    return out;
   }
 
   // ------------------------------------------------------------ typing guide (for a real typewriter)

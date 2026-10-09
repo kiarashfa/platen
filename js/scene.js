@@ -170,7 +170,7 @@ function studioEnv(renderer, m) {
     sc.add(p);
   }
   const pm = new THREE.PMREMGenerator(renderer);
-  const rt = pm.fromScene(sc, 0.045, 1, 300);
+  const rt = pm.fromScene(sc, 0.04, 1, 300);
   pm.dispose();
   sc.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   return rt;
