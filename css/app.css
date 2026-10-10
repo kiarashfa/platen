@@ -317,3 +317,5 @@ body.typing .brand:hover, body.typing .tools:hover, body.typing .status:hover, b
   .ex-side .sec, .ex-side .btn { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) { #exporter { justify-content: flex-start; overflow-y: auto; } }
+.kbd-btn[aria-pressed="true"] { background: rgba(239, 228, 200, .92); color: #2a221c; box-shadow: none; }
+#stage { touch-action: none; }

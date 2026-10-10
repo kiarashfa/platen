@@ -273,15 +273,16 @@ class App {
     return speed * jitter * fingerWeight(id) * (shift ? 1.06 : 1) * (this.s.mode === 'draw' ? this.s.pressure : 1);
   }
 
-  typeChar(ch, { auto = false, pressure = null } = {}) {
+  // held: the key stays down until its keyup (only a physical keyboard sends one); taps and phone
+  // keyboards press and spring back on their own
+  typeChar(ch, { auto = false, pressure = null, held = false } = {}) {
     if (ch === ' ') return this.space();
     if (ch === '\n') return this.carriageReturn();
     const { id, shift } = keyFor(ch);
     const over = this.s.mode === 'draw' && this.s.over;
     const r = this.car.type({ advance: !over });
     const m = this.machine;
-    if (!auto && id) m.pressKey(id, true);
-    else if (id) m.pressKey(id);
+    if (id) m.pressKey(id, held && !auto);
     if (r.act === 'jam') {
       this.snd('jam', { pan: id ? m.keyPan(id) : 0 });
       this.hint('The carriage is at the margin. Press Enter to return it.');
@@ -714,9 +715,10 @@ class App {
       if ([...k].length === 1) {
         e.preventDefault();
         if (e.repeat && k !== ' ') return;         // typewriters don't auto-repeat
-        this.heldKeys.set(e.code, keyFor(k).id);
+        // phone keyboards often send an empty code, so fall back to the key itself
+        this.heldKeys.set(e.code || 'key:' + k.toLowerCase(), keyFor(k).id);
         this.stage.driftTarget.set(0, 0);
-        this.typeChar(k);
+        this.typeChar(k, { held: true });
       }
     });
 
@@ -726,9 +728,20 @@ class App {
         this.machine.setShift(false); this.snd('shift', false);
         return;
       }
-      const id = this.heldKeys.get(e.code);
-      if (id) { this.machine.releaseKey(id); this.heldKeys.delete(e.code); }
+      const hk = e.code || 'key:' + (e.key || '').toLowerCase();
+      const id = this.heldKeys.get(hk);
+      if (id) { this.machine.releaseKey(id); this.heldKeys.delete(hk); }
+      else if (e.key && [...e.key].length === 1) { const kid = keyFor(e.key).id; if (kid) this.machine.releaseKey(kid); }
     });
+    // a key can never stay down after the window loses focus
+    const releaseAll = () => {
+      for (const id of this.heldKeys.values()) this.machine.releaseKey(id);
+      this.heldKeys.clear();
+      for (const id of ['shiftL', 'shiftR']) this.machine.releaseKey(id);
+      this.machine.setShift(!!this.shiftLock);
+    };
+    window.addEventListener('blur', releaseAll);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
     // a clicked panel button should not keep focus (Space/Enter would press it again)
     document.addEventListener('pointerup', e => {
@@ -757,34 +770,39 @@ class App {
       ray.setFromCamera(ndc, this.stage.camera);
       return this.machine.pick(ray);
     };
+    // 3D keys strike on press (like the real thing) and spring back on release; everything else
+    // (sheet, lever, knob) acts on a tap. preventDefault keeps an open phone keyboard open.
     let downAt = null;
+    const pressedBy = new Map();      // pointerId -> key id held down by that finger or mouse
     cv.addEventListener('pointerdown', e => {
       this.unlockAudio();
-      downAt = { x: e.clientX, y: e.clientY, t: this.now() };
-    });
-    cv.addEventListener('pointerup', e => {
-      if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 8) { downAt = null; return; }
-      downAt = null;
+      e.preventDefault();
+      downAt = { x: e.clientX, y: e.clientY, t: this.now(), key: false };
       if (this.job || blocked()) return;
       const hit = pickAt(e.clientX, e.clientY);
-      if (isTouch) ta.focus({ preventScroll: true });
+      if (hit && hit.type === 'key') {
+        downAt.key = true;
+        const held = this._tapKey(hit.id);
+        if (held) pressedBy.set(e.pointerId, held);
+      }
+    });
+    const lift = e => {
+      const id = pressedBy.get(e.pointerId);
+      if (id) { this.machine.releaseKey(id); pressedBy.delete(e.pointerId); }
+    };
+    cv.addEventListener('pointerup', e => {
+      lift(e);
+      const d = downAt;
+      downAt = null;
+      if (!d || d.key || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) return;
+      if (this.job || blocked()) return;
+      const hit = pickAt(e.clientX, e.clientY);
       if (!hit) return;
-      if (hit.type === 'key') {
-        const id = hit.id;
-        if (id === 'space') this.space();
-        else if (id === 'back') this.backspace();
-        else if (id === 'tab') this.tab();
-        else if (id === 'shiftL' || id === 'shiftR' || id === 'lock') { this.shiftLock = !this.shiftLock; this.machine.pressKey(id); this.machine.setShift(this.shiftLock); this.snd('shift', this.shiftLock); this.hint(this.shiftLock ? 'Shift lock on' : 'Shift lock off'); }
-        else if (id === 'mr') { this.car.release = true; this.machine.pressKey('mr'); this.snd('knob', { clicks: 1 }); this.hint('Margin released for this line'); }
-        else if (id.length === 1) {
-          let ch = id;
-          if (this.shiftLock) ch = /[a-z]/.test(id) ? id.toUpperCase() : ({ '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '¢', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', ';': ':', "'": '"', '/': '?' }[id] || id);
-          this.typeChar(ch);
-        }
-      } else if (hit.type === 'lever') this.carriageReturn();
+      if (hit.type === 'lever') this.carriageReturn();
       else if (hit.type === 'knob') this.nudge(0, 1, true);
       else if (hit.type === 'paper') this.moveTo(hit.col, hit.row);
     });
+    cv.addEventListener('pointercancel', e => { lift(e); downAt = null; });
     let lastMove = 0;
     cv.addEventListener('pointermove', e => {
       const r = cv.getBoundingClientRect();
@@ -808,8 +826,43 @@ class App {
       const maxLook = Math.max(0, (this.car.row - LAYOUT.TOP) * 0.4233 - 4);
       this.stage.lookTarget = clamp(this.stage.lookTarget - e.deltaY * 0.02, 0, maxLook + 6);
     }, { passive: false });
-    if (isTouch) document.getElementById('kbdBtn').hidden = false;
-    document.getElementById('kbdBtn').addEventListener('click', () => { this.unlockAudio(); ta.focus(); });
+    // the phone keyboard opens and closes only with its button
+    const kb = document.getElementById('kbdBtn');
+    if (isTouch) kb.hidden = false;
+    kb.addEventListener('pointerdown', e => e.preventDefault());
+    kb.addEventListener('click', () => {
+      this.unlockAudio();
+      if (document.activeElement === ta) ta.blur(); else ta.focus({ preventScroll: true });
+    });
+    ta.addEventListener('focus', () => kb.setAttribute('aria-pressed', 'true'));
+    ta.addEventListener('blur', () => kb.setAttribute('aria-pressed', 'false'));
+  }
+
+  // a key on the 3D keyboard was pressed by a finger or the mouse; returns the key id to lift later
+  _tapKey(id) {
+    if (id === 'space') { this.space(); return null; }
+    if (id === 'back') { this.backspace(); return null; }
+    if (id === 'tab') { this.tab(); return null; }
+    if (id === 'shiftL' || id === 'shiftR' || id === 'lock') {
+      this.shiftLock = !this.shiftLock;
+      this.machine.pressKey(id);
+      this.machine.setShift(this.shiftLock);
+      this.snd('shift', this.shiftLock);
+      this.hint(this.shiftLock ? 'Shift lock on' : 'Shift lock off');
+      return null;
+    }
+    if (id === 'mr') {
+      this.car.release = true;
+      this.machine.pressKey('mr');
+      this.snd('knob', { clicks: 1 });
+      this.hint('Margin released for this line');
+      return null;
+    }
+    if (id.length !== 1) return null;
+    let ch = id;
+    if (this.shiftLock) ch = /[a-z]/.test(id) ? id.toUpperCase() : ({ '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '¢', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', ';': ':', "'": '"', '/': '?' }[id] || id);
+    this.typeChar(ch, { held: true });
+    return keyFor(ch).id;
   }
 
   // ------------------------------------------------------------ a photo of the machine, at mult x the css size
@@ -870,6 +923,7 @@ class App {
 }
 
 const app = new App();
+app.THREE = THREE;            // for the dev tools (tools/mobile-check.mjs projects key positions)
 window.PL = app;
 app.boot().catch(e => {
   console.error(e);

@@ -3,7 +3,7 @@ import { COLORS, TRIMS, KEYCAPS } from './machine.js';
 import { PAPERS, RIBBONS, INKS, TYPEFACES, PageSurface, strikeRect } from './ink.js';
 import { separateInk, cropRect, cropData, exportName } from './export.js';
 import { MOODS } from './scene.js';
-import { LAYOUT, pageText, wordCount } from './page.js';
+import { LAYOUT, pageText, wordCount, pagesMarkdown } from './page.js';
 
 // mirrors js/audio.js (kept here so the panels work even before the sound engine has loaded)
 const PROFILES = [{ id: 'portable', name: 'Portable' }, { id: 'desk', name: 'Desk machine' }];
@@ -256,9 +256,11 @@ export class UI {
       ),
       this._sec('Everything',
         h('div', { class: 'row2' },
-          h('button', { class: 'btn', onclick: () => this.copyAll() }, 'Copy all text'),
+          h('button', { class: 'btn', onclick: () => this.downloadAllMarkdown(), title: 'Every page in one Markdown file' }, 'Save .md'),
           h('button', { class: 'btn', onclick: () => this.downloadAllText() }, 'Save .txt')),
+        h('button', { class: 'btn', onclick: () => this.copyAll() }, 'Copy all text'),
         h('button', { class: 'btn', onclick: () => this.printPages(app.state.pages.map((_, i) => i)) }, 'Print or save as PDF'),
+        h('p', { class: 'note' }, 'Markdown keeps your paragraphs; drawings go in as code blocks, character for character.'),
       ),
       this._sec(['Sheets', h('em', {}, `${app.state.pages.length}`)], this.thumbs = h('div', { class: 'thumbs' })),
     );
@@ -349,6 +351,10 @@ export class UI {
       try { await navigator.clipboard.writeText(pageText(p)); app.toast('Copied the text of this page'); }
       catch { app.toast('Copying was blocked by the browser'); }
     }
+    if (act === 'md') {
+      if (!pageText(p).trim()) { app.toast('This page is blank'); return; }
+      download(new Blob([pagesMarkdown([p], { title: `Platen · page ${i + 1}`, numbers: [i + 1] })], { type: 'text/markdown;charset=utf-8' }), `platen-page-${i + 1}.md`);
+    }
     if (act === 'txt') download(new Blob([pageText(p) + '\n'], { type: 'text/plain;charset=utf-8' }), `platen-page-${i + 1}.txt`);
     if (act === 'png') { this.closeReader(); this.openExport(i); }
     if (act === 'print') this.printPages([i]);
@@ -373,6 +379,13 @@ export class UI {
 
   downloadAllText() {
     download(new Blob([this.allText() + '\n'], { type: 'text/plain;charset=utf-8' }), 'platen-pages.txt');
+  }
+
+  downloadAllMarkdown() {
+    const pages = this.app.state.pages;
+    if (!pages.some(p => pageText(p).trim())) { this.app.toast('Nothing typed yet'); return; }
+    download(new Blob([pagesMarkdown(pages)], { type: 'text/markdown;charset=utf-8' }), 'platen-pages.md');
+    this.app.toast('Saved platen-pages.md');
   }
 
   // print through a hidden frame holding one image per sheet

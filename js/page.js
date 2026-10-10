@@ -136,6 +136,56 @@ export function pageText(page) {
   return out.join('\n');
 }
 
+// ---------------------------------------------------------------- Markdown export
+
+// A page is art (keep it character for character in a code block) when it uses half steps,
+// stacks impressions in many cells, or is mostly not letters and digits.
+export function looksLikeArt(page) {
+  const s = page.strikes.filter(x => !x.g && x.c && !/\s/.test(x.c));
+  if (!s.length) return false;
+  if (s.some(x => x.x % 1 || x.y % 1)) return true;
+  const cells = new Map();
+  for (const x of s) { const k = Math.round(x.y) * 1000 + Math.round(x.x); cells.set(k, (cells.get(k) || 0) + 1); }
+  let stacked = 0;
+  for (const n of cells.values()) if (n > 1) stacked++;
+  const letters = s.filter(x => /[\p{L}\p{N}]/u.test(x.c)).length / s.length;
+  return stacked / cells.size > 0.05 || letters < 0.6;
+}
+
+// escape what Markdown would otherwise read as formatting
+function escapeMd(line) {
+  let t = line.replace(/([\\`*_[\]<>|~])/g, '\\$1');
+  t = t.replace(/^(#{1,6}(?=\s)|[-+](?=\s)|>)/, '\\$1');
+  t = t.replace(/^(\d+)([.)])(?=\s)/, '$1\\$2');
+  return t;
+}
+
+const mdDate = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+// One page as a Markdown section. Prose keeps the typed lines (they reflow into paragraphs when
+// rendered); indents are dropped so they don't turn into code blocks. Art goes in a fenced block.
+export function pageMarkdown(page, number) {
+  const text = pageText(page);
+  if (!text.trim()) return '';
+  const art = looksLikeArt(page);
+  const head = `## Page ${number}\n\n*${mdDate(page.created || Date.now())}${art ? ' · typewriter art' : ''}*\n\n`;
+  if (art) {
+    const fence = text.includes('```') ? '~~~~' : '```';
+    return head + fence + 'text\n' + text + '\n' + fence + '\n';
+  }
+  const body = text.split('\n').map(l => escapeMd(l.replace(/^\s+/, '').replace(/\s+$/, ''))).join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+  return head + body + '\n';
+}
+
+// Every page (blank ones skipped) as one Markdown document.
+export function pagesMarkdown(pages, { title = 'Platen pages', numbers = null, now = Date.now() } = {}) {
+  const sections = pages.map((p, i) => pageMarkdown(p, numbers ? numbers[i] : i + 1)).filter(Boolean);
+  const count = `${sections.length} page${sections.length === 1 ? '' : 's'}`;
+  const intro = `# ${title}\n\nTyped on [Platen](https://winchxyz.github.io/platen/) · ${count} · exported ${mdDate(now)}\n`;
+  return [intro, ...sections].join('\n---\n\n');
+}
+
 export function wordCount(text) {
   const m = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
   return m ? m.length : 0;

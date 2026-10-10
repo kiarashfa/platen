@@ -51,7 +51,7 @@ pixel by pixel, and every clack, ratchet and ding is synthesised as you type.
 | **Margin bell & lock** | The bell rings near the right margin. Keep typing and the keys jam until you press <kbd>Enter</kbd>. Or switch *Line ends* to **Auto return**. |
 | **Correction tape** | <kbd>Backspace</kbd> lifts the letter off and leaves a faint ghost. Or choose **Ink is forever** and overstrike like it's 1958. |
 | **Black & red ribbon** | <kbd>Ctrl</kbd>+<kbd>R</kbd> flips the ribbon to its red half. |
-| **Pages** | Full sheets roll out and a fresh one rolls in. Read them flat, copy the text, save `.txt`, or print to PDF. |
+| **Pages** | Full sheets roll out and a fresh one rolls in. Read them flat, copy the text, save one page or all of them as **Markdown** (`.md`: paragraphs kept, drawings in code blocks) or `.txt`, or print to PDF. |
 | **Save as image** | <kbd>Ctrl</kbd>+<kbd>S</kbd>: the whole sheet, **just the ink** cropped to your text or drawing (on paper, white or a transparent background), or a photo of the machine. Standard 240 dpi or large 360 dpi PNG, or copy it straight to the clipboard. |
 
 ### 🎨 Draw
@@ -130,7 +130,7 @@ window**, **fireplace**, **mantel clock**, **summer night**. Headphones recommen
 | Scroll / <kbd>Ctrl</kbd>+scroll | Look up the page / zoom |
 | Click the sheet, lever, knob | Move the carriage there / carriage return / roll the platen |
 
-On phones, tap the keyboard button and type with your own keyboard; the 3D keys are clickable too.
+On phones, tap the 3D keys directly, or open your phone's keyboard with the keyboard button (tap it again to close it).
 
 ## How it's made
 

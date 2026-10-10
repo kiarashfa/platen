@@ -1,7 +1,7 @@
 // node --test tests/   — carriage rules and text export (pure logic, no browser needed)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Carriage, LAYOUT, newPage, pageText, wordCount, keyFor, fingerWeight } from '../js/page.js';
+import { Carriage, LAYOUT, newPage, pageText, wordCount, keyFor, fingerWeight, pageMarkdown, pagesMarkdown, looksLikeArt } from '../js/page.js';
 
 const typeLine = (car, page, text) => {
   for (const ch of text) {
@@ -128,6 +128,40 @@ test('pageText collapses double spacing', () => {
   typeLine(car, page, 'three'); car.ret(); car.ret();
   typeLine(car, page, 'four');
   assert.equal(pageText(page), 'one\ntwo\nthree\n\nfour');
+});
+
+test('Markdown: prose keeps its lines, drops indents and escapes formatting', () => {
+  const page = newPage();
+  page.created = Date.UTC(2026, 9, 9, 12);
+  const car = new Carriage();
+  typeLine(car, page, 'Dear *Margaret*,'); car.ret(); car.ret();
+  typeLine(car, page, '     The rain has_not stopped.'); car.ret();
+  typeLine(car, page, '# not a heading');
+  const md = pageMarkdown(page, 2);
+  assert.match(md, /^## Page 2\n\n\*9 October 2026\*\n\n/);
+  assert.ok(md.includes('Dear \\*Margaret\\*,\n\nThe rain has\\_not stopped.\n\\# not a heading\n'), md);
+  assert.ok(!/^ {4}/m.test(md), 'no line may start with four spaces (a code block)');
+});
+
+test('Markdown: typewriter art goes in a code block, unchanged', () => {
+  const page = newPage();
+  for (let x = 20; x < 30; x++) page.strikes.push({ c: '#', x, y: 8 }, { c: '@', x, y: 8 });
+  page.strikes.push({ c: '.', x: 22.5, y: 9.5 });
+  assert.equal(looksLikeArt(page), true);
+  const md = pageMarkdown(page, 1);
+  assert.ok(md.includes('```text\n@@@@@@@@@@\n'), md);
+  assert.ok(md.trimEnd().endsWith('```'));
+});
+
+test('Markdown: blank pages are skipped and the header counts the rest', () => {
+  const a = newPage(), b = newPage(), c = newPage();
+  const car = new Carriage();
+  typeLine(car, a, 'One.');
+  typeLine(new Carriage(), c, 'Three.');
+  const md = pagesMarkdown([a, b, c], { now: Date.UTC(2026, 9, 10, 12) });
+  assert.ok(md.startsWith('# Platen pages\n\nTyped on [Platen](https://winchxyz.github.io/platen/) · 2 pages · exported 10 October 2026\n'), md);
+  assert.ok(md.includes('## Page 1') && md.includes('## Page 3') && !md.includes('## Page 2'));
+  assert.equal(looksLikeArt(a), false);
 });
 
 test('wordCount counts words, not punctuation', () => {

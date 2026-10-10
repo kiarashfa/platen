@@ -955,8 +955,10 @@ export class Machine {
     // keys
     for (const [, k] of this.keys) {
       if (k.t0 == null) continue;
-      const e = now - k.t0;
+      let e = now - k.t0;
       const dn = 0.03, up = 0.11;
+      // a release that never arrives (lost keyup, odd touch input) must not leave a key down for good
+      if (k.held && e > 2.5) { k.held = false; k.t0 = now - dn; e = dn; }
       let d;
       if (k.held) d = Math.min(e / dn, 1);
       else if (e < dn) d = e / dn;
