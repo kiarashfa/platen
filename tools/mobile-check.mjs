@@ -12,7 +12,7 @@ const ctx = await browser.newContext({ ...devices['iPhone 13'], deviceScaleFacto
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
-await page.goto(`http://localhost:${process.env.PORT || 8875}/index.html`);
+await page.goto(`${process.env.BASE || "http://localhost:" + (process.env.PORT || 8875)}/index.html`);
 await page.waitForFunction(() => window.PL && PL.machine && !document.body.classList.contains('loading'), null, { timeout: 60000 });
 await page.evaluate(() => { document.getElementById('welcome').hidden = true; PL.s.welcomed = true; });
 await page.waitForTimeout(500);
